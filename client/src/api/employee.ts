@@ -1,0 +1,46 @@
+import type {
+  EmployeeListItem,
+  EmployeeProfile,
+  SkillTreeResponse,
+} from '@shared/api.interface';
+import { axiosForBackend } from '@/lib/runtime';
+import { logger } from '@/lib/runtime';
+
+export async function listEmployees(): Promise<EmployeeListItem[]> {
+  try {
+    const res = await axiosForBackend.request<EmployeeListItem[]>({
+      url: '/api/employees',
+      method: 'GET',
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('获取员工列表失败', error);
+    throw error;
+  }
+}
+
+export async function getEmployeeProfile(slug: string): Promise<EmployeeProfile> {
+  try {
+    const res = await axiosForBackend.request<EmployeeProfile>({
+      url: `/api/employees/${slug}`,
+      method: 'GET',
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('获取员工画像失败', error);
+    throw error;
+  }
+}
+
+export async function getSkillTree(): Promise<SkillTreeResponse> {
+  try {
+    const res = await axiosForBackend.request<SkillTreeResponse>({
+      url: '/api/skill-tree',
+      method: 'GET',
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('获取技能树失败', error);
+    throw error;
+  }
+}

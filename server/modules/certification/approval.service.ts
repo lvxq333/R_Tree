@@ -1,0 +1,284 @@
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
+import { asc, eq } from 'drizzle-orm';
+import dayjs from 'dayjs';
+import { approval, employeeSkill } from '@server/database/schema';
+import type {
+  ApprovalAction,
+  ApprovalItem,
+  CertificationItem,
+  ManagerReviewInput,
+} from '@shared/api.interface';
+import {
+  DEMO_EMPLOYEE_SLUG,
+  toApprovalItem,
+  toCertificationItem,
+  type CertificationMutationResult,
+} from './certification.service';
+
+export interface ApprovalDecideInput {
+  action: ApprovalAction;
+  comment: string;
+}
+
+export interface ApprovalDecisionResult {
+  approval: ApprovalItem;
+  certification: CertificationItem | null;
+}
+
+@Injectable()
+export class ApprovalService {
+  private readonly logger = new Logger(ApprovalService.name);
+
+  constructor(
+    @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+  ) {}
+
+  async listApprovals(): Promise<ApprovalItem[]> {
+    const rows = await this.db.select().from(approval).orderBy(asc(approval.sort));
+    return rows.map((row: typeof approval.$inferSelect) => toApprovalItem(row));
+  }
+
+  /** 管理者发起评审：生成待审批认证 + 关联降级复核审批单 */
+  async managerReview(input: ManagerReviewInput): Promise<CertificationMutationResult> {
+    if (!input.personName) throw new BadRequestException('personName 不能为空');
+    if (!input.skill) throw new BadRequestException('skill 不能为空');
+    if (typeof input.currentLevel !== 'number' || typeof input.targetLevel !== 'number') {
+      throw new BadRequestException('currentLevel / targetLevel 必须为数字');
+    }
+    const detail = `${input.reason}。管理者说明：${input.evidence}`;
+    const certSlug = `manager-${Date.now()}`;
+    const certSort = await this.nextSort(
+      this.db
+        .select({ sort: employeeSkill.sort })
+        .from(employeeSkill)
+        .where(eq(employeeSkill.employeeSlug, DEMO_EMPLOYEE_SLUG)),
+    );
+    const certInserted = await this.db
+      .insert(employeeSkill)
+      .values({
+        slug: certSlug,
+        employeeSlug: DEMO_EMPLOYEE_SLUG,
+        title: input.skill,
+        category: '专业技能 / 管理者评审',
+        source: 'performance',
+        sourceShort: '绩效',
+        sourceLabel: '管理者发起评审',
+        currentLevel: input.currentLevel,
+        targetLevel: input.targetLevel,
+        confidence: 75,
+        status: 'pending',
+        statusLabel: '审批中',
+        explanation: detail,
+        anchor: '',
+        evidence: [{ type: '说明', title: input.reason, detail: input.evidence }],
+        deadline: '',
+        sort: certSort,
+      })
+      .returning();
+    const certRow = certInserted[0];
+    if (!certRow) throw new InternalServerErrorException('认证记录创建失败');
+
+    const approvalSort = await this.nextSort(
+      this.db.select({ sort: approval.sort }).from(approval),
+    );
+    const approvalInserted = await this.db
+      .insert(approval)
+      .values({
+        slug: `manager-review-${Date.now()}`,
+        linkedSlug: certSlug,
+        kind: 'downgrade',
+        applicant: input.personName,
+        avatar: input.personName.slice(0, 1),
+        department: '管理者发起',
+        title: input.skill,
+        currentLevel: input.currentLevel,
+        targetLevel: input.targetLevel,
+        sourceLabel: '管理者发起评审',
+        submittedAt: '刚刚',
+        due: '09-23',
+        status: 'pending',
+        detail,
+        employeeResponse: '等待员工补充说明',
+        sort: approvalSort,
+      })
+      .returning();
+    const approvalRow = approvalInserted[0];
+    if (!approvalRow) throw new InternalServerErrorException('审批单创建失败');
+    this.logger.log(
+      `manager review created: ${JSON.stringify({ certSlug, applicant: input.personName })}`,
+    );
+    return {
+      certification: toCertificationItem(certRow),
+      approval: toApprovalItem(approvalRow),
+    };
+  }
+
+  /** 审批流转：更新审批单并同步联动认证，返回二者最新状态 */
+  async decideApproval(
+    slug: string,
+    input: ApprovalDecideInput,
+  ): Promise<ApprovalDecisionResult> {
+    const rows = await this.db
+      .select()
+      .from(approval)
+      .where(eq(approval.slug, slug))
+      .limit(1);
+    const approvalRow = rows[0];
+    if (!approvalRow) throw new NotFoundException(`审批单不存在：${slug}`);
+    const action = input.action;
+    const comment: string = input.comment ?? '';
+    if ((action === 'return' || action === 'reject') && !comment) {
+      throw new BadRequestException('退回或驳回申请时，请先填写审批意见');
+    }
+
+    let certRow: typeof employeeSkill.$inferSelect | undefined;
+    if (approvalRow.linkedSlug) {
+      const certRows = await this.db
+        .select()
+        .from(employeeSkill)
+        .where(eq(employeeSkill.slug, approvalRow.linkedSlug))
+        .limit(1);
+      certRow = certRows[0];
+    }
+
+    const approvalPatch: Partial<typeof approval.$inferInsert> = {
+      status: this.approvalStatusFor(action),
+    };
+    if (comment) approvalPatch.detail = comment;
+
+    const certPatch: Partial<typeof employeeSkill.$inferInsert> = {};
+    if (certRow) {
+      this.applyCertificationPatch(certPatch, certRow, approvalRow, action);
+    }
+
+    const approvalUpdated = await this.db
+      .update(approval)
+      .set(approvalPatch)
+      .where(eq(approval.slug, slug))
+      .returning();
+    const updatedApprovalRow = approvalUpdated[0];
+    if (!updatedApprovalRow) throw new NotFoundException(`审批单不存在：${slug}`);
+
+    let certification: CertificationItem | null = null;
+    if (certRow) {
+      certification = await this.syncLinkedCertification(certRow.slug, certPatch);
+    }
+    this.logger.log(
+      `approval decided: ${JSON.stringify({ slug, action, linked: approvalRow.linkedSlug })}`,
+    );
+    return { approval: toApprovalItem(updatedApprovalRow), certification };
+  }
+
+  private approvalStatusFor(action: ApprovalAction): string {
+    switch (action) {
+      case 'approve':
+        return 'approved';
+      case 'reject':
+        return 'rejected';
+      case 'return':
+        return 'returned';
+      case 'maintain':
+        return 'maintained';
+      case 'extend':
+        return 'extended';
+      case 'downgrade':
+        return 'rejected';
+      default:
+        return 'pending';
+    }
+  }
+
+  private applyCertificationPatch(
+    certPatch: Partial<typeof employeeSkill.$inferInsert>,
+    certRow: typeof employeeSkill.$inferSelect,
+    approvalRow: typeof approval.$inferSelect,
+    action: ApprovalAction,
+  ): void {
+    const today = dayjs().format('YYYY-MM-DD');
+    switch (action) {
+      case 'approve': {
+        const target: number = approvalRow.targetLevel ?? certRow.targetLevel ?? 0;
+        certPatch.status = 'approved';
+        certPatch.statusLabel = '已点亮';
+        certPatch.currentLevel = target;
+        certPatch.approvedAt = today;
+        certPatch.sourceLabel = approvalRow.sourceLabel
+          ? `${approvalRow.sourceLabel} · 已审批生效`
+          : '人工审批 · 已审批生效';
+        certPatch.explanation = `该技能已通过人工审批并正式点亮，最近一次认证生效于 ${today}。`;
+        break;
+      }
+      case 'reject':
+        certPatch.status = 'ready';
+        certPatch.statusLabel = '待我确认';
+        break;
+      case 'return':
+        certPatch.status = 'returned';
+        certPatch.statusLabel = '待补充';
+        break;
+      case 'maintain': {
+        const current: number = approvalRow.currentLevel ?? certRow.currentLevel ?? 0;
+        certPatch.status = 'approved';
+        certPatch.statusLabel = '已维持';
+        certPatch.targetLevel = current;
+        certPatch.confidence = Math.min(100, (certRow.confidence ?? 0) + 10);
+        certPatch.explanation = `经人工复核，现有证据仍支持 L${current}，当前等级保持不变。`;
+        break;
+      }
+      case 'extend':
+        certPatch.status = 'review';
+        certPatch.statusLabel = '观察期延长';
+        certPatch.deadline = this.extendQuarter(certRow.deadline);
+        certPatch.explanation = '管理者已延长 3 个月观察期，期间当前正式等级保持有效。';
+        break;
+      case 'downgrade': {
+        const target: number = approvalRow.targetLevel ?? certRow.currentLevel ?? 0;
+        certPatch.status = 'approved';
+        certPatch.currentLevel = target;
+        certPatch.statusLabel = '已降级';
+        certPatch.explanation = `经人工复核，该技能自 ${today} 起调整为 L${target}。原 L${certRow.currentLevel ?? 0} 记录与本次复核意见均已保留。`;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  private async syncLinkedCertification(
+    certSlug: string,
+    certPatch: Partial<typeof employeeSkill.$inferInsert>,
+  ): Promise<CertificationItem> {
+    const updated = await this.db
+      .update(employeeSkill)
+      .set(certPatch)
+      .where(eq(employeeSkill.slug, certSlug))
+      .returning();
+    const row = updated[0];
+    if (!row) throw new NotFoundException(`认证记录不存在：${certSlug}`);
+    return toCertificationItem(row);
+  }
+
+  private extendQuarter(deadline: string | null): string {
+    const base = deadline ? dayjs(deadline) : dayjs();
+    const safeBase = base.isValid() ? base : dayjs();
+    return safeBase.add(3, 'month').format('YYYY-MM-DD');
+  }
+
+  /** 取现有最小 sort 再减一，让新记录排在列表最前 */
+  private async nextSort(
+    query: Promise<{ sort: number }[]>,
+  ): Promise<number> {
+    const rows = await query;
+    return (
+      rows.reduce((min: number, row: { sort: number }) => Math.min(min, row.sort), 0) - 1
+    );
+  }
+}

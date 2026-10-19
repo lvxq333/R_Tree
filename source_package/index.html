@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>技能树 · 产品概念原型</title>
+  <link rel="stylesheet" href="./styles.css?v=2" />
+  <link rel="stylesheet" href="./responsive.css?v=3" />
+  <link rel="stylesheet" href="./overview-v2.css?v=5" />
+  <link rel="stylesheet" href="./certification.css?v=2" />
+  <link rel="stylesheet" href="./talent-search.css?v=3" />
+  <link rel="stylesheet" href="./manager-extensions.css?v=2" />
+  <link rel="stylesheet" href="./employee-profile.css?v=2" />
+  <link rel="stylesheet" href="./typography.css?v=1" />
+  <link rel="stylesheet" href="./skill-lifecycle.css?v=1" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">S</span><div><strong>技能树</strong><small>Talent Signal</small></div></div>
+      <div class="workspace-switch">
+        <span>当前工作台</span>
+        <button id="role-switch">员工工作台 <span>⌄</span></button>
+      </div>
+      <nav id="employee-nav" class="nav-group">
+        <button class="nav-item active" data-page="overview"><i>⌂</i>成长概览</button>
+        <button class="nav-item" data-page="evidence"><i>✦</i>技能池<span class="count" id="evidence-nav-count">2</span></button>
+      </nav>
+      <nav id="manager-nav" class="nav-group hidden">
+        <button class="nav-item active" data-page="manager"><i>▦</i>团队概览</button>
+        <button class="nav-item" data-page="approval"><i>✓</i>认证与复核<span class="count" id="approval-nav-count">4</span></button>
+        <button class="nav-item" data-page="talent"><i>⌕</i>人才搜索</button>
+        <button class="nav-item" data-page="succession"><i>◇</i>梯队与继任</button>
+        <button class="nav-item" data-page="team"><i>＋</i>项目组队</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="avatar">张</div><div><strong>张三</strong><small>初级软件开发工程师</small></div><button>•••</button>
+      </div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><h1 id="page-title">成长概览</h1><p id="page-subtitle">聚焦目标、差距与下一步行动</p></div>
+        <div class="top-actions"><button class="employee-lookup-trigger hidden" id="employee-lookup-trigger" aria-expanded="false" aria-controls="employee-lookup"><span>⌕</span> 搜索员工</button><button class="ghost" id="data-freshness">数据更新于 2 天前</button><button class="primary" id="primary-action">更新成长计划</button></div>
+      </header>
+
+      <section class="page active" id="overview">
+        <section class="profile-hero">
+          <div class="profile-avatar">张</div>
+          <div><h2>早上好，张三</h2><p>今天是你成长的第 1,286 天，继续加油！</p><span>持续构建可靠、易演进的平台能力。 <button aria-label="编辑个人简介">✎</button></span></div>
+          <button class="hero-skill-signal" id="hero-skill-signal" data-page="evidence">
+            <i class="hero-signal-orbit" aria-hidden="true"></i><span class="hero-signal-icon">✦</span>
+            <span><b><strong id="overview-signal-count">2</strong> 项技能出现点亮信号</b><small id="overview-signal-copy">容器与编排（K8s）依据完整度 86%，等待确认</small></span>
+            <em>查看 →</em>
+          </button>
+          <button class="hero-add" aria-label="新增成长记录">＋</button>
+        </section>
+
+        <div class="profile-metrics">
+          <article><i class="metric-icon purple">▱</i><div><span>总技能</span><strong>18</strong></div></article>
+          <article><i class="metric-icon amber">▥</i><div><span>平均技能等级</span><strong>L2.8</strong></div></article>
+          <article><i class="metric-icon blue">AI</i><div><span>超级员工</span><strong>L2</strong></div></article>
+          <article><i class="metric-icon rose">↗</i><div><span>成长速度（近三月升级次数）</span><strong>3</strong></div></article>
+        </div>
+
+        <div class="profile-insights">
+          <section class="panel radar-panel">
+            <div class="section-head compact"><div><h3>能力结构分布</h3><p>我的水平与团队平均对比</p></div><button class="radar-skill-entry" data-page="evidence">进入技能池 <span><b id="radar-signal-count">2</b> 待确认</span></button></div>
+            <svg class="radar-chart" viewBox="0 0 420 250" role="img" aria-label="能力结构雷达图">
+              <g transform="translate(210 124)" fill="none" stroke="#d9deef">
+                <polygon points="0,-92 80,-46 80,46 0,92 -80,46 -80,-46"/><polygon points="0,-69 60,-34 60,34 0,69 -60,34 -60,-34"/><polygon points="0,-46 40,-23 40,23 0,46 -40,23 -40,-23"/><polygon points="0,-23 20,-11 20,11 0,23 -20,11 -20,-11"/>
+                <line x1="0" y1="0" x2="0" y2="-92"/><line x1="0" y1="0" x2="80" y2="-46"/><line x1="0" y1="0" x2="80" y2="46"/><line x1="0" y1="0" x2="0" y2="92"/><line x1="0" y1="0" x2="-80" y2="46"/><line x1="0" y1="0" x2="-80" y2="-46"/>
+                <polygon points="0,-73 52,-30 58,34 0,64 -62,36 -48,-28" fill="rgba(128,91,244,.20)" stroke="#8b67f6" stroke-width="2"/>
+                <polygon points="0,-45 65,-37 45,26 0,48 -40,23 -30,-17" fill="rgba(73,126,242,.18)" stroke="#5790ef" stroke-width="2"/>
+              </g>
+              <g fill="#697386" font-size="12" text-anchor="middle"><text x="210" y="18">研发工程能力</text><text x="345" y="79">系统设计</text><text x="346" y="186">工程质量</text><text x="210" y="239">协作与影响</text><text x="75" y="186">业务理解</text><text x="72" y="79">问题解决</text></g>
+            </svg>
+            <div class="chart-legend"><span><i class="legend-purple"></i>我的水平</span><span><i class="legend-blue"></i>团队平均</span></div>
+          </section>
+          <section class="panel maturity-panel">
+            <div class="section-head compact"><div><h3>能力成熟度分布</h3><p>18 项已认证技能</p></div></div>
+            <div class="donut"><div><strong>18</strong><span>项技能</span></div></div>
+            <ul><li><i class="dot-expert"></i><span>专家能力（L4-L5）</span><b>3</b></li><li><i class="dot-core"></i><span>核心能力（L3）</span><b>7</b></li><li><i class="dot-growth"></i><span>进阶能力（L1-L2）</span><b>8</b></li></ul>
+          </section>
+          <section class="panel identity-panel">
+            <div class="section-head compact"><div><h3>身份信息</h3><p>仅本人和授权管理者可见</p></div></div>
+            <dl><div><dt>企业</dt><dd>示例科技集团</dd></div><div><dt>部门</dt><dd>平台研发部</dd></div><div><dt>当前岗位</dt><dd>初级软件开发工程师</dd></div><div><dt>职级</dt><dd>T1-2</dd></div><div><dt>工作地点</dt><dd>北京</dd></div></dl>
+            <div class="identity-actions"><button class="primary">分享名片</button><button class="ghost">复制信息</button></div>
+          </section>
+        </div>
+
+        <section class="panel career-panel">
+          <div class="section-head"><div><h3>职业发展路线</h3><p>系统根据当前岗位、技能证据和发展偏好推荐；点击节点查看能力满足情况</p></div><div class="career-controls"><div class="sequence-picker" id="sequence-picker"><button class="sequence-trigger" id="sequence-trigger" aria-expanded="false" aria-controls="sequence-menu"><span>软件开发序列</span><i>⌄</i></button><div class="sequence-menu hidden" id="sequence-menu"><button class="active" data-sequence="software"><b>软件开发序列</b><small>工程化、系统设计与技术影响力</small></button><button data-sequence="platform"><b>平台工程序列</b><small>云平台、稳定性与基础设施架构</small></button><button data-sequence="ai"><b>数据与 AI 序列</b><small>AI 应用、模型工程与智能系统架构</small></button></div></div><div class="channel-switch"><button class="active" data-channel="tech">技术序列</button><button data-channel="management">管理通道</button></div></div></div>
+          <div class="skill-model-note"><b>技能模型</b><span>一级技能：专业技能 / 通用技能</span><i>→</i><span>二级技能：具体可评估能力</span><i>→</i><span>等级：L1-L5</span></div>
+          <div class="career-route" id="career-route"></div>
+          <div class="node-detail">
+            <div class="node-summary"><span id="node-state">推荐下一站</span><h4 id="node-title">中级软件开发工程师</h4><p id="node-description">需满足 6 项核心能力，当前已满足 4 项。</p><div class="coverage-bar"><i id="node-coverage" style="width:67%"></i></div><small id="node-coverage-label">能力满足度 67%</small></div>
+            <div class="node-skills" id="node-skills"></div>
+          </div>
+          <div class="level-legend"><b>二级技能等级</b><span><i>L1</i>入门</span><span><i>L2</i>基础</span><span><i>L3</i>熟练</span><span><i>L4</i>精通</span><span><i>L5</i>专家</span></div>
+        </section>
+
+        <div class="growth-bottom-grid">
+          <section class="panel gap-pool-panel">
+            <div class="section-head"><div><h3>我的 Gap 池</h3><p>三个来源统一汇总、去重并按优先级排序</p></div></div>
+            <div class="gap-source-tabs"><button class="active" data-gap-filter="all"><b>6</b><span>全部 Gap</span></button><button data-gap-filter="career"><b>3</b><span>职业下一节点</span></button><button data-gap-filter="okr"><b>2</b><span>OKR 推导</span></button><button data-gap-filter="current"><b>1</b><span>当前岗位</span></button></div>
+            <div class="gap-pool-list">
+              <article data-gap-source="career"><div class="gap-source career">职业</div><div class="gap-copy"><h4>系统设计与模块拆分</h4><p>专业技能 / 系统设计 · 中级岗位要求</p></div><div class="five-levels"><i class="filled"></i><i></i><i class="target"></i><i></i><i></i></div><b>L1 → L3</b><span class="tag p0">P0</span></article>
+              <article data-gap-source="okr"><div class="gap-source okr">OKR</div><div class="gap-copy"><h4>服务稳定性与 SLO 设计</h4><p>专业技能 / 稳定性工程 · O2 目标推导</p></div><div class="five-levels"><i class="filled"></i><i></i><i class="target"></i><i></i><i></i></div><b>L1 → L3</b><span class="tag p0">P0</span></article>
+              <article data-gap-source="career"><div class="gap-source career">职业</div><div class="gap-copy"><h4>Java / Go 工程化实践</h4><p>专业技能 / 编程与工程化 · 中级岗位要求</p></div><div class="five-levels"><i class="filled"></i><i class="filled"></i><i class="target"></i><i></i><i></i></div><b>L2 → L3</b><span class="tag p1">P1</span></article>
+              <article data-gap-source="current"><div class="gap-source current">岗位</div><div class="gap-copy"><h4>自动化测试与质量门禁</h4><p>专业技能 / 工程质量 · 当前岗位未达标</p></div><div class="five-levels"><i class="filled"></i><i class="target"></i><i></i><i></i><i></i></div><b>L1 → L2</b><span class="tag p0">P0</span></article>
+              <article data-gap-source="okr"><div class="gap-source okr">OKR</div><div class="gap-copy"><h4>AI Agent 应用集成</h4><p>专业技能 / AI 应用开发 · KR3 目标推导</p></div><div class="five-levels"><i class="filled"></i><i class="target"></i><i></i><i></i><i></i></div><b>L1 → L2</b><span class="tag p1">P1</span></article>
+              <article data-gap-source="career"><div class="gap-source career">职业</div><div class="gap-copy"><h4>技术方案表达</h4><p>通用技能 / 沟通协作 · 中级岗位要求</p></div><div class="five-levels"><i class="filled"></i><i class="filled"></i><i class="target"></i><i></i><i></i></div><b>L2 → L3</b><span class="tag p1">P1</span></article>
+            </div>
+          </section>
+
+          <section class="panel recommendation-panel">
+            <div class="section-head"><div><h3>针对 Gap 的行动建议</h3><p>课程只是其中一种方式，建议同时包含学习、实践、导师反馈和可验证交付</p></div></div>
+            <div class="recommendation-grid">
+              <article><span class="resource-label internal">新知社课程</span><h4>系统设计：从模块到架构</h4><p>对应 Gap：系统设计与模块拆分 · 建议本月完成</p><div><span>6 节 · 预计 3 小时</span><button>加入学习计划</button></div></article>
+              <article><span class="resource-label external">外部资源</span><h4>Google SRE Workbook：SLO 实践</h4><p>对应 Gap：服务稳定性与 SLO 设计 · 中文导读已收录</p><div><span>文章 · 45 分钟</span><button>查看资源</button></div></article>
+              <article><span class="resource-label practice">岗位实践</span><h4>负责一次核心服务 SLO 方案评审</h4><p>对应 OKR：核心服务可用性提升至 99.95%</p><div><span>证明：方案 + 评审记录</span><button>创建行动</button></div></article>
+              <article><span class="resource-label mentor">导师建议</span><h4>与架构师进行 2 次方案拆解</h4><p>重点反馈：边界识别、容量预估与故障降级</p><div><span>推荐导师 3 人</span><button>查看导师</button></div></article>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel growth-curve-panel" aria-labelledby="growth-curve-title">
+          <div class="growth-curve-head">
+            <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>记录正式通过审批的技能，升级和待审批申请不会提前计入曲线</p></div>
+            <div class="growth-curve-summary"><span>当前已点亮 <b>18</b> 项</span><span>近 6 个月 <b>+5</b></span></div>
+            <div class="growth-range" role="tablist" aria-label="选择成长轨迹时间范围">
+              <button class="active" data-growth-range="12m" aria-selected="true">近 12 个月</button>
+              <button data-growth-range="6m" aria-selected="false">近 6 个月</button>
+              <button data-growth-range="all" aria-selected="false">全部</button>
+            </div>
+          </div>
+          <div class="growth-curve-layout">
+            <div class="growth-chart-wrap">
+              <svg class="growth-chart" id="growth-chart" viewBox="0 0 900 300" role="img" aria-label="张三累计已点亮技能数量变化曲线">
+                <defs><linearGradient id="growth-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6558e8" stop-opacity=".25"/><stop offset="1" stop-color="#6558e8" stop-opacity=".02"/></linearGradient><filter id="growth-point-glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>
+                <g id="growth-grid"></g>
+                <path id="growth-area-path" fill="url(#growth-area)"></path>
+                <path id="growth-line-path" fill="none" stroke="#6558e8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+                <g id="growth-points"></g>
+                <g id="growth-labels"></g>
+              </svg>
+            </div>
+            <aside class="growth-event-detail" id="growth-event-detail" aria-live="polite"></aside>
+          </div>
+        </section>
+      </section>
+
+      <section class="page" id="evidence">
+        <section class="skill-galaxy panel" aria-labelledby="skill-map-title">
+          <header class="galaxy-header">
+            <div><span class="cert-kicker">我的能力星图</span><h2 id="skill-map-title">技能地图</h2><p>点亮 6 项技能，3 项出现新的成长信号</p></div>
+            <div class="galaxy-actions"><button class="galaxy-help" id="galaxy-help">图例说明</button><button class="primary" id="open-self-application">申请点亮技能</button></div>
+          </header>
+          <div class="sequence-tabs" role="tablist" aria-label="选择技能序列">
+            <button class="active" data-skill-track="all">全部星图</button>
+            <button data-skill-track="software">软件开发</button>
+            <button data-skill-track="platform">平台工程</button>
+            <button data-skill-track="ai">数据与 AI</button>
+            <button data-skill-track="general">通用能力</button>
+          </div>
+          <div class="galaxy-stage">
+            <div class="galaxy-controls" aria-label="技能地图视角控制">
+              <button data-galaxy-control="zoom-out" aria-label="缩小技能地图">−</button>
+              <button class="cruise-control active" data-galaxy-control="cruise" aria-pressed="true">暂停巡航</button>
+              <button data-galaxy-control="reset">重置视角</button>
+              <button data-galaxy-control="zoom-in" aria-label="放大技能地图">＋</button>
+              <span>拖拽旋转 · 滚轮缩放</span>
+            </div>
+            <div class="galaxy-camera is-cruising" id="galaxy-camera">
+            <svg class="constellation-map" viewBox="0 0 1080 450" role="img" aria-label="张三的技能关系地图，技能按软件开发、平台工程、数据与 AI、通用能力连接">
+              <defs>
+                <radialGradient id="galaxy-core" cx="50%" cy="50%" r="50%"><stop offset="0" stop-color="#6578ff" stop-opacity=".24"/><stop offset="1" stop-color="#111a32" stop-opacity="0"/></radialGradient>
+                <filter id="node-glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+              </defs>
+              <ellipse cx="540" cy="225" rx="330" ry="160" fill="url(#galaxy-core)"/>
+              <g class="orbit-system" aria-hidden="true"><ellipse cx="540" cy="225" rx="250" ry="105"/><ellipse cx="540" cy="225" rx="390" ry="175"/><ellipse cx="540" cy="225" rx="470" ry="205"/></g>
+              <g class="cosmic-particles" aria-hidden="true"><circle cx="74" cy="74" r="1.4"/><circle cx="185" cy="206" r="1"/><circle cx="266" cy="36" r="1.2"/><circle cx="376" cy="225" r="1.1"/><circle cx="482" cy="72" r="1.5"/><circle cx="575" cy="385" r="1.2"/><circle cx="680" cy="48" r="1"/><circle cx="804" cy="276" r="1.4"/><circle cx="958" cy="174" r="1.1"/><circle cx="1010" cy="365" r="1.5"/></g>
+              <g class="constellation-lines">
+                <line data-track="software" data-from="programming" data-to="code-quality" x1="130" y1="120" x2="300" y2="88"/><line data-track="software" data-from="code-quality" data-to="testing" x1="300" y1="88" x2="430" y2="160"/><line data-track="software" data-from="testing" data-to="system-design" x1="430" y1="160" x2="610" y2="108"/>
+                <line data-track="platform" data-from="observability" data-to="k8s" x1="170" y1="310" x2="345" y2="270"/><line data-track="platform" data-from="k8s" data-to="slo" x1="345" y1="270" x2="520" y2="338"/><line data-track="platform" data-from="slo" data-to="automation" x1="520" y1="338" x2="705" y2="278"/>
+                <line data-track="ai" data-from="system-design" data-to="ai-integration" x1="610" y1="108" x2="765" y2="145"/><line data-track="ai" data-from="ai-integration" data-to="data-processing" x1="765" y1="145" x2="900" y2="90"/><line data-track="ai" data-from="ai-integration" data-to="model-evaluation" x1="765" y1="145" x2="925" y2="235"/>
+                <line data-track="general" data-from="testing" data-to="requirements" x1="430" y1="160" x2="540" y2="225"/><line data-track="general" data-from="requirements" data-to="automation" x1="540" y1="225" x2="705" y2="278"/><line data-track="general" data-from="requirements" data-to="ai-integration" x1="540" y1="225" x2="765" y2="145"/><line data-track="general" data-from="requirements" data-to="communication" x1="540" y1="225" x2="355" y2="395"/>
+                <line data-track="platform software" data-from="k8s" data-to="testing" x1="345" y1="270" x2="430" y2="160"/><line data-track="ai platform" data-from="automation" data-to="model-evaluation" x1="705" y1="278" x2="925" y2="235"/>
+              </g>
+              <g class="skill-star is-lit" data-skill-node="programming" data-track="software" data-status="approved" tabindex="0" role="button" aria-label="编程语言基础，已点亮 L2" transform="translate(130 120)"><circle class="star-halo" r="28"/><circle class="star-core" r="10"/><text y="36">编程语言基础</text><text class="star-level" y="52">L2 · 已点亮</text></g>
+              <g class="skill-star is-lit" data-skill-node="code-quality" data-track="software" data-status="approved" tabindex="0" role="button" aria-label="代码质量，已点亮 L2" transform="translate(300 88)"><circle class="star-halo" r="25"/><circle class="star-core" r="9"/><text y="34">代码质量</text><text class="star-level" y="50">L2 · 已点亮</text></g>
+              <g class="skill-star is-returned" data-skill-node="testing" data-track="software" data-status="returned" tabindex="0" role="button" aria-label="自动化测试，待补充证明" transform="translate(430 160)"><circle class="star-ring" r="18"/><circle class="star-core" r="7"/><text y="32">自动化测试</text><text class="star-level" y="48">待补充</text></g>
+              <g class="skill-star is-unlit" data-skill-node="system-design" data-track="software" data-status="ready" tabindex="0" role="button" aria-label="系统设计，未点亮，有新建议" transform="translate(610 108)"><circle class="signal-orbit" r="23"/><circle class="star-core" r="7"/><text y="35">系统设计</text><text class="star-level" y="51">有新建议</text></g>
+              <g class="skill-star is-review" data-skill-node="requirements" data-track="general software" data-status="review" tabindex="0" role="button" aria-label="需求理解，当前 L3，待复核" transform="translate(540 225)"><circle class="signal-orbit" r="30"/><circle class="star-core" r="11"/><text y="40">需求理解</text><text class="star-level" y="56">L3 · 待复核</text></g>
+              <g class="skill-star is-lit" data-skill-node="observability" data-track="platform" data-status="approved" tabindex="0" role="button" aria-label="可观测性，已点亮 L2" transform="translate(170 310)"><circle class="star-halo" r="24"/><circle class="star-core" r="9"/><text y="35">可观测性</text><text class="star-level" y="51">L2 · 已点亮</text></g>
+              <g class="skill-star is-unlit" data-skill-node="k8s" data-track="platform" data-status="ready" tabindex="0" role="button" aria-label="容器与编排，未点亮，有新建议" transform="translate(345 270)"><circle class="signal-orbit" r="25"/><circle class="star-core" r="8"/><text y="38">容器与编排</text><text class="star-level" y="54">有新建议</text></g>
+              <g class="skill-star is-unlit" data-skill-node="slo" data-track="platform" data-status="unlit" tabindex="0" role="button" aria-label="SLO 设计，未点亮" transform="translate(520 338)"><circle class="star-ring" r="17"/><circle class="star-core" r="6"/><text y="31">SLO 设计</text><text class="star-level" y="47">未点亮</text></g>
+              <g class="skill-star is-unlit" data-skill-node="automation" data-track="platform" data-status="unlit" tabindex="0" role="button" aria-label="自动化运维，未点亮" transform="translate(705 278)"><circle class="star-ring" r="17"/><circle class="star-core" r="6"/><text y="31">自动化运维</text><text class="star-level" y="47">未点亮</text></g>
+              <g class="skill-star is-lit" data-skill-node="data-processing" data-track="ai" data-status="approved" tabindex="0" role="button" aria-label="数据处理，已点亮 L2" transform="translate(900 90)"><circle class="star-halo" r="23"/><circle class="star-core" r="8"/><text y="34">数据处理</text><text class="star-level" y="50">L2 · 已点亮</text></g>
+              <g class="skill-star is-unlit" data-skill-node="ai-integration" data-track="ai" data-status="unlit" tabindex="0" role="button" aria-label="AI 应用集成，未点亮" transform="translate(765 145)"><circle class="star-ring" r="17"/><circle class="star-core" r="6"/><text y="31">AI 应用集成</text><text class="star-level" y="47">未点亮</text></g>
+              <g class="skill-star is-unlit" data-skill-node="model-evaluation" data-track="ai" data-status="unlit" tabindex="0" role="button" aria-label="模型评估，未点亮" transform="translate(925 235)"><circle class="star-ring" r="17"/><circle class="star-core" r="6"/><text y="31">模型评估</text><text class="star-level" y="47">未点亮</text></g>
+              <g class="skill-star is-pending" data-skill-node="collaboration" data-track="general" data-status="pending" tabindex="0" role="button" aria-label="跨团队协作，审批中" transform="translate(835 350)"><circle class="signal-orbit" r="23"/><circle class="star-core" r="8"/><text y="36">跨团队协作</text><text class="star-level" y="52">审批中</text></g>
+              <g class="skill-star is-lit" data-skill-node="communication" data-track="general software" data-status="approved" tabindex="0" role="button" aria-label="技术方案表达，已点亮 L2" transform="translate(355 395)"><circle class="star-halo" r="23"/><circle class="star-core" r="8"/><text y="34">技术方案表达</text><text class="star-level" y="50">L2 · 已点亮</text></g>
+              <line class="constellation-tail" data-track="general" data-from="automation" data-to="collaboration" x1="705" y1="278" x2="835" y2="350"/>
+            </svg>
+            </div>
+            <div class="map-legend" id="map-legend"><span><i class="lit-dot"></i>已点亮</span><span><i class="review-dot"></i>待复核</span><span><i class="pending-dot"></i>审批中</span><span><i class="signal-dot"></i>有新建议</span><span><i class="dark-dot"></i>未点亮</span></div>
+            <div class="galaxy-selection" id="galaxy-selection" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <section class="cert-flow" aria-label="技能点亮流程">
+          <div class="flow-step done"><span>1</span><div><b>产生技能信号</b><small>员工提交或 AI 识别</small></div></div>
+          <i>→</i>
+          <div class="flow-step current"><span>2</span><div><b>员工确认申请</b><small>选择等级并核对证据</small></div></div>
+          <i>→</i>
+          <div class="flow-step"><span>3</span><div><b>管理者或 HR 审批</b><small>通过、退回补充或驳回</small></div></div>
+          <i>→</i>
+          <div class="flow-step"><span>4</span><div><b>正式点亮</b><small>记录等级、来源与有效期</small></div></div>
+        </section>
+
+        <section class="lifecycle-notice" aria-label="技能等级复核说明">
+          <span class="lifecycle-notice-icon">↻</span>
+          <div><b>技能等级会定期复核</b><p>长期无相关工作或产出只会触发复核，不会自动降级。你可以补充近期成果、说明暂无实践机会，并查看最终判断依据。</p></div>
+          <button data-cert-filter-shortcut="review">查看 1 项待复核</button>
+        </section>
+
+        <section class="panel self-application hidden" id="self-application" aria-labelledby="self-application-title">
+          <div class="section-head">
+            <div><h3 id="self-application-title">主动申请点亮</h3><p>至少提供一项可核验的证明，培训参与记录本身不等于掌握技能，建议补充考试、作业或实践成果。</p></div>
+            <button class="ghost" id="close-self-application" aria-label="关闭主动申请">关闭</button>
+          </div>
+          <form id="self-application-form" class="self-application-form">
+            <label><span>技能</span><select id="self-skill"><option>自动化测试与质量门禁</option><option>容器与编排（K8s）</option><option>系统设计与模块拆分</option><option>服务稳定性与 SLO 设计</option><option>AI 应用集成</option><option>模型评估</option></select></label>
+            <label><span>申请等级</span><select id="self-level"><option value="2">L2 · 基础</option><option value="3">L3 · 熟练</option></select></label>
+            <label><span>证明类型</span><select id="self-evidence-type"><option>培训考试</option><option>项目成果</option><option>文档或作品</option><option>答辩结果</option></select></label>
+            <label class="form-wide"><span>证明名称</span><input id="self-evidence-title" value="质量工程训练营结业考试（92 分）" required /></label>
+            <label class="form-wide"><span>证明链接或附件说明</span><input id="self-evidence-link" value="飞书培训记录 / 结业证书 / 考试成绩单" required /></label>
+            <label class="form-wide"><span>申请说明</span><textarea id="self-note" rows="3">已完成训练营全部课程，并在支付服务项目中配置单元测试覆盖率门禁。</textarea></label>
+            <div class="form-actions form-wide"><span id="self-form-hint">提交后将由直属管理者或 HR 审批。</span><button type="submit" class="primary">提交点亮申请</button></div>
+          </form>
+        </section>
+
+        <div class="cert-summary has-five" aria-label="认证状态汇总">
+          <article><span>待我确认</span><strong id="ready-count">2</strong><small>AI 建议需由你发起申请</small></article>
+          <article><span>审批中</span><strong id="pending-count">1</strong><small>管理者或 HR 正在处理</small></article>
+          <article class="review-summary"><span>待复核</span><strong id="review-count">1</strong><small>当前等级仍然有效</small></article>
+          <article><span>待补充</span><strong id="returned-count">1</strong><small>补齐证据后可再次提交</small></article>
+          <article><span>近 90 天已点亮</span><strong id="approved-count">3</strong><small>全部保留审核记录</small></article>
+        </div>
+
+        <div class="certification-layout">
+          <section class="panel cert-inbox">
+            <div class="section-head"><div><h3>全部技能</h3><p>查看已点亮技能，以及等待申请或审批的技能</p></div></div>
+            <div class="cert-filters" role="tablist" aria-label="按来源筛选">
+              <button class="active" data-cert-filter="all">全部</button>
+              <button data-cert-filter="approved">已点亮</button>
+              <button data-cert-filter="review">待复核</button>
+              <button data-cert-filter="manual">主动申请</button>
+              <button data-cert-filter="worklog">日报 / 工时</button>
+              <button data-cert-filter="performance">绩效成果</button>
+            </div>
+            <div id="cert-list" class="cert-list"></div>
+          </section>
+          <aside class="panel cert-detail" id="cert-detail" aria-live="polite"></aside>
+        </div>
+
+        <section class="panel certification-history">
+          <div class="section-head"><div><h3>最近等级变更</h3><p>点亮、升级、维持与降级均保留完整记录</p></div><button class="ghost">查看全部记录</button></div>
+          <div class="history-row history-head"><span>技能</span><span>等级变化</span><span>主要依据</span><span>审批人</span><span>生效时间</span></div>
+          <div class="history-row"><span><b>代码质量</b><small>专业技能 / 工程质量</small></span><span>L1 → L2</span><span>项目成果 + 专家评审</span><span>陈老师</span><span>2026-08-28</span></div>
+          <div class="history-row"><span><b>跨团队协作</b><small>通用技能 / 协作影响</small></span><span>L2 → L3</span><span>季度绩效成果</span><span>李经理</span><span>2026-08-11</span></div>
+          <div class="history-row"><span><b>数据库性能调优</b><small>专业技能 / 数据工程</small></span><span class="history-down">L3 → L2</span><span>18 个月无相关实践，人工复核</span><span>王经理 + 专家</span><span>2026-07-22</span></div>
+        </section>
+      </section>
+
+      <section class="page" id="manager">
+        <div class="manager-hero"><div><h2>平台工程部 · 人才驾驶舱</h2><p>62 名员工 · 2026 Q3 · 数据有效率 91%</p></div><div class="filters"><button>全部岗位 ⌄</button><button>全部职级 ⌄</button><button>本季度 ⌄</button></div></div>
+        <div class="signal-strip manager-signals"><article><span>关键技能满足率</span><strong>76%</strong><small class="up">↑ 4% 较上季度</small></article><article><span>关键岗位健康度</span><strong>8 / 12</strong><small>4 个岗位需要行动</small></article><article><span>P0 技能缺口</span><strong class="danger">17</strong><small>集中在 3 个技能域</small></article><article><span>路线执行率</span><strong>68%</strong><small>9 人本周无进展</small></article></div>
+        <div class="manager-grid">
+          <section class="panel heat-panel"><div class="section-head"><div><h3>核心技能供需</h3><p>需求等级与当前供给的差值</p></div><button class="ghost">查看完整热力图</button></div><div class="heat-table"><div></div><b>T1</b><b>T2</b><b>T3</b><b>T4</b><span>容器与编排</span><i class="h1">+8</i><i class="h2">+3</i><i class="h4">-4</i><i class="h5">-2</i><span>自动化开发</span><i class="h1">+5</i><i class="h3">+1</i><i class="h4">-6</i><i class="h5">-3</i><span>架构设计</span><i class="h2">+2</i><i class="h3">0</i><i class="h4">-3</i><i class="h5">-1</i><span>可观测性</span><i class="h1">+6</i><i class="h2">+3</i><i class="h3">0</i><i class="h4">-1</i></div><div class="legend"><span><i class="supply"></i>供给充足</span><span><i class="balanced"></i>基本平衡</span><span><i class="shortage"></i>存在缺口</span></div></section>
+          <section class="panel risk-panel"><div class="section-head"><div><h3>需要管理动作</h3><p>按业务影响排序</p></div><span>4 项</span></div><div class="risk-item critical"><span>高</span><div><b>T4 平台架构师无成熟继任者</b><p>最近候选人匹配度 78%，仍缺架构治理能力。</p><button>查看梯队 →</button></div></div><div class="risk-item warning"><span>中</span><div><b>自动化开发 P0 Gap 集中</b><p>12 名 T2 员工中 7 人低于基线。</p><button>创建培养计划 →</button></div></div><div class="risk-item"><span>低</span><div><b>3 项技能数据即将过期</b><p>涉及 6 名员工，建议安排复核。</p><button>查看名单 →</button></div></div></section>
+        </div>
+        <section class="panel member-panel"><div class="section-head"><div><h3>团队成长状态</h3><p>聚焦目标与行动，不以单一分数评价员工</p></div><button class="primary" data-page="talent">寻找项目人才</button></div><div class="member-row header"><span>成员</span><span>发展目标</span><span>P0 Gap</span><span>路线进度</span><span>下次 Check-in</span><span></span></div><button class="member-row member-profile-row" data-open-profile="zhou-chen"><span><i class="mini-avatar">周</i><b>周晨</b></span><span>T3 平台架构师</span><span><b class="danger">2 项</b></span><span><em><i style="width:68%"></i></em>68%</span><span>09-22</span><span aria-hidden="true">→</span></button><button class="member-row member-profile-row" data-open-profile="lin-xiao"><span><i class="mini-avatar blue">林</i><b>林晓</b></span><span>T3 SRE 专家</span><span><b>1 项</b></span><span><em><i style="width:82%"></i></em>82%</span><span>09-25</span><span aria-hidden="true">→</span></button><button class="member-row member-profile-row" data-open-profile="chen-ran"><span><i class="mini-avatar green">陈</i><b>陈然</b></span><span>待确认</span><span><b>—</b></span><span><em><i style="width:24%"></i></em>24%</span><span class="danger">已逾期</span><span aria-hidden="true">→</span></button></section>
+      </section>
+
+      <section class="page" id="profile">
+        <nav class="profile-breadcrumb" aria-label="员工画像路径"><button id="profile-back">← 返回团队概览</button><span>/</span><span id="profile-breadcrumb-name">周晨</span></nav>
+
+        <section class="profile-command-bar">
+          <div class="profile-person">
+            <i class="profile-person-avatar" id="profile-avatar">周</i>
+            <div><div class="profile-name-line"><h2 id="profile-name">周晨</h2><span id="profile-status">在职</span></div><p id="profile-role">高级平台工程师 · T3</p><small id="profile-org">平台工程部 / 云基础设施组 · 北京</small></div>
+          </div>
+          <div class="profile-command-actions"><button class="ghost" id="profile-share">分享画像摘要</button><button class="primary" id="profile-checkin">安排成长沟通</button></div>
+        </section>
+
+        <div class="profile-trust-line"><span><i></i>画像信息有效</span><span id="profile-updated">更新于 2026-09-14</span><span>仅展示当前权限范围内信息</span><button id="profile-sources-trigger">查看数据来源</button></div>
+
+        <section class="profile-decision-summary" aria-labelledby="profile-summary-title">
+          <div class="profile-summary-copy"><span>画像结论</span><h3 id="profile-summary-title">可独立负责平台核心模块，正在补齐组织级架构治理能力</h3><p id="profile-summary-description">近两个季度承担跨团队平台升级，交付稳定；适合作为平台架构师后备候选，通过真实项目验证技术决策与跨域推动能力。</p></div>
+          <dl class="profile-facts"><div><dt>当前发展目标</dt><dd id="profile-goal">T4 平台架构师</dd></div><div><dt>下一次 Check-in</dt><dd id="profile-next-checkin">2026-09-22</dd></div><div><dt>项目可用性</dt><dd id="profile-availability">10 月可投入 40%</dd></div></dl>
+        </section>
+
+        <ol class="profile-question-map" aria-label="员工画像八个核心问题">
+          <li><span>01</span><b>是谁</b></li><li><span>02</span><b>负责什么</b></li><li><span>03</span><b>做过什么</b></li><li><span>04</span><b>做成什么</b></li><li><span>05</span><b>产生什么影响</b></li><li><span>06</span><b>如何贡献</b></li><li><span>07</span><b>证明什么能力</b></li><li><span>08</span><b>如何继续发展</b></li>
+        </ol>
+
+        <div class="profile-layout">
+          <div class="profile-main-column">
+            <section class="profile-section" aria-labelledby="profile-responsibilities-title">
+              <div class="profile-section-head"><div><span class="profile-question-label">02 · 负责什么</span><h3 id="profile-responsibilities-title">当前责任与目标</h3><p>明确员工正在承接的目标、业务范围和交付责任。</p></div><span id="profile-responsibility-count">3 项责任</span></div>
+              <div class="profile-responsibility-list" id="profile-responsibilities"></div>
+            </section>
+
+            <section class="profile-section" aria-labelledby="profile-projects-title">
+              <div class="profile-section-head"><div><span class="profile-question-label">03–07 · 贡献证据链</span><h3 id="profile-projects-title">从实际行动到业务影响</h3><p>每段经历都说明责任、行动、交付、影响、贡献角色和被证明的能力。</p></div><span id="profile-project-count">近 12 个月 3 项</span></div>
+              <div class="profile-project-list" id="profile-projects"></div>
+            </section>
+
+            <section class="profile-section" aria-labelledby="profile-skills-title">
+              <div class="profile-section-head"><div><span class="profile-question-label">07 · 证明什么能力</span><h3 id="profile-skills-title">核心技能与正式证据</h3><p>只显示仍在有效期内的正式等级，待确认信号不计入。</p></div><button id="profile-skill-standard">查看技能标准</button></div>
+              <div class="profile-skill-table"><div class="profile-skill-row profile-skill-head"><span>技能</span><span>当前等级</span><span>最近使用 / 状态</span><span>最近证据</span><span>有效期</span><span></span></div><div id="profile-skills"></div></div>
+              <section class="profile-level-review hidden" id="profile-level-review" aria-labelledby="profile-level-review-title">
+                <div class="profile-review-heading"><div><span>高影响操作</span><h4 id="profile-level-review-title">发起技能降级复核</h4><p id="profile-review-summary">请选择目标等级，并说明当前表现不再满足原等级的具体依据。</p></div><button type="button" id="close-profile-review" aria-label="关闭降级复核">×</button></div>
+                <form id="profile-level-review-form">
+                  <div class="profile-review-levels"><span><small>当前正式等级</small><b id="profile-review-current">L3</b></span><i>→</i><label><span>拟调整等级</span><select id="profile-review-target"></select></label></div>
+                  <label><span>触发原因</span><select id="profile-review-reason"><option>近期表现不满足原等级行为锚点</option><option>长期无相关工作或可核验产出</option><option>原认证或关键证据已过期</option></select></label>
+                  <label><span>判断依据</span><textarea id="profile-review-evidence" rows="3" required placeholder="请写明观察周期、具体表现，以及与原等级行为锚点的差异。"></textarea></label>
+                  <div class="profile-review-impact"><b>生效影响</b><span>确认后将重新计算岗位 Gap、人才匹配和团队技能供需；原等级与证据不会被删除。</span></div>
+                  <label class="profile-review-confirm"><input id="profile-review-confirm" type="checkbox" required /><span>我已核对变更前后等级，提交后将通知员工并开放补证与申诉。</span></label>
+                  <div class="profile-review-actions"><button type="button" class="ghost" id="cancel-profile-review">取消</button><button type="submit" class="primary">提交降级复核</button></div>
+                </form>
+              </section>
+            </section>
+
+            <section class="profile-section profile-traits-section" aria-labelledby="profile-traits-title">
+              <div class="profile-section-head"><div><h3 id="profile-traits-title">综合核心特征</h3><p>由前述责任、行动、成果和能力证据归纳，不作为独立的人事结论。</p></div><span>5 项</span></div>
+              <div class="profile-trait-list" id="profile-traits"></div>
+            </section>
+          </div>
+
+          <aside class="profile-side-column">
+            <section class="profile-aside-section"><div class="profile-section-head"><div><span class="profile-question-label">01 · 是谁</span><h3>组织与任职经历</h3><p id="profile-tenure-summary">在职 3 年 6 个月，经历 2 个岗位。</p></div></div><div class="profile-experience-list" id="profile-experience"></div></section>
+            <section class="profile-aside-section"><div class="profile-section-head"><div><span class="profile-question-label">08 · 如何继续发展</span><h3>下一阶段目标与实践</h3><p>成长目标由员工与直属管理者共同确认。</p></div></div><div class="profile-readiness"><span id="profile-readiness-state">6–9 个月可进入候选评审</span><div><i id="profile-readiness-track" style="width:68%"></i></div><small id="profile-readiness-copy">目标岗位 6 项核心能力，当前满足 4 项</small></div><dl class="profile-gap-list" id="profile-gaps"></dl><div class="profile-development-list" id="profile-development-actions"></div><button class="profile-wide-action" id="profile-plan">查看发展计划</button></section>
+            <section class="profile-aside-section"><div class="profile-section-head"><div><h3>协作画像</h3><p>仅呈现与工作协作直接相关的已确认信息。</p></div></div><dl class="profile-collaboration" id="profile-collaboration"></dl></section>
+            <section class="profile-aside-section profile-governance"><div class="profile-section-head"><div><h3>数据说明</h3></div></div><p>画像不包含私人聊天、健康家庭信息，也不生成忠诚度或离职风险判断。</p><button id="profile-correction">反馈信息有误</button></section>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" id="approval">
+        <section class="approval-heading">
+          <div><h2>技能认证与复核</h2><p>统一处理点亮、升级和降级复核。任何正式等级变化都需要明确依据。</p></div>
+          <div class="approval-stats"><span><b id="approval-pending-count">4</b> 待处理</span><span><b>1</b> 降级复核</span><span><b>12</b> 本月已处理</span></div>
+        </section>
+        <div class="approval-layout">
+          <section class="panel approval-queue">
+            <div class="section-head"><div><h3>待处理队列</h3><p>优先显示降级复核、临近截止和补充后再次提交的申请</p></div><button class="ghost">筛选 ⌄</button></div>
+            <div id="approval-list" class="approval-list"></div>
+          </section>
+          <aside class="panel approval-detail" id="approval-detail" aria-live="polite"></aside>
+        </div>
+      </section>
+
+      <section class="page" id="talent">
+        <section class="talent-brief panel">
+          <div class="talent-brief-head">
+            <div><h2>描述项目需要，找到真正合适的人</h2><p>系统会拆解领域、能力与经历要求；推荐结果保留证据、缺口和可用性，不代替管理判断。</p></div>
+            <div class="talent-mode" aria-label="人才配置模式"><button class="active">人才搜索</button><button id="team-mode-button">项目组队 <span>可扩展</span></button></div>
+          </div>
+          <div class="talent-prompt-wrap">
+            <textarea id="talent-prompt" aria-label="项目人才需求">我需要找适合参与具身智能业务的人。项目预计 10 月启动，需要理解机器人感知、强化学习或运动控制，有真实机器人项目经验更好，可投入至少 50%。</textarea>
+            <div class="talent-prompt-actions">
+              <div class="scope-picker" id="scope-picker">
+                <button class="scope-trigger" id="scope-trigger" aria-expanded="false"><span class="scope-icon">⌾</span><span><small>搜索范围</small><b id="scope-label">全公司人才技能池</b></span><i>⌄</i></button>
+                <div class="scope-menu hidden" id="scope-menu">
+                  <div><b>选择找人的业务中心</b><small>不选择时默认搜索全公司</small></div>
+                  <label><input type="checkbox" value="智能汽车事业群" /> 智能汽车事业群</label>
+                  <label><input type="checkbox" value="AI 平台中心" /> AI 平台中心</label>
+                  <label><input type="checkbox" value="机器人创新中心" /> 机器人创新中心</label>
+                  <button id="scope-confirm">应用范围</button>
+                </div>
+              </div>
+              <button class="analyze-button" id="analyze-talent"><span>✦</span> 解析需求并找人</button>
+            </div>
+          </div>
+          <div class="talent-conditions" id="talent-conditions">
+            <div class="condition-lead"><span class="condition-status">已解析</span><b>具身智能业务探索</b><small>系统从描述中识别出 4 类条件，请确认后用于匹配</small></div>
+            <div class="condition-group"><span>业务领域</span><div><button>具身智能 ×</button><button>机器人 ×</button></div></div>
+            <div class="condition-group required"><span>必需能力</span><div><button>机器人感知 L3 ×</button><button>强化学习 L3 ×</button><button>运动控制 L2 ×</button><button class="add-condition">＋</button></div></div>
+            <div class="condition-group bonus"><span>经历与加分项</span><div><button>真实硬件落地 ×</button><button>仿真平台 ×</button><button>多模态 ×</button><button class="add-condition">＋</button></div></div>
+            <div class="condition-meta"><span><i>◷</i> 2026.10 起</span><span><i>◔</i> 至少投入 50%</span><button id="edit-conditions">调整条件</button></div>
+          </div>
+        </section>
+
+        <div class="talent-workspace">
+          <section class="talent-results panel">
+            <div class="talent-results-head">
+              <div><h3>推荐候选人</h3><p><b id="candidate-count">6</b> 人进入当前分层 · 技能与经历证据更新至 2026-09-13</p></div>
+              <div class="result-controls"><button id="availability-filter">仅看可投入</button><button id="org-filter">全部组织 ⌄</button><button aria-label="更多筛选">☷ 筛选</button></div>
+            </div>
+            <div class="talent-segments" role="tablist" aria-label="候选人匹配分层">
+              <button class="active" data-talent-segment="direct" role="tab"><span>直接匹配</span><b>6</b><small>已有相关能力与经历</small></button>
+              <button data-talent-segment="adjacent" role="tab"><span>相邻能力</span><b>9</b><small>核心能力可迁移</small></button>
+              <button data-talent-segment="potential" role="tab"><span>潜力人才</span><b>14</b><small>短期培养后可胜任</small></button>
+            </div>
+            <div class="candidate-list" id="talent-candidate-list" aria-live="polite"></div>
+          </section>
+
+          <aside class="shortlist-panel panel">
+            <div class="shortlist-head"><div><span>候选清单</span><h3><b id="shortlist-count">1</b> 位候选人</h3></div><button id="clear-shortlist">清空</button></div>
+            <div class="shortlist-context"><span>当前需求</span><b>具身智能业务探索</b><small id="shortlist-scope">范围：全公司人才技能池</small></div>
+            <div id="shortlist-items" class="shortlist-items"></div>
+            <div class="shortlist-readiness">
+              <div><span>必需能力覆盖</span><b id="coverage-value">83%</b></div>
+              <div class="readiness-track"><i id="coverage-track" style="width:83%"></i></div>
+              <p id="coverage-note">强化学习与机器人感知已有可靠覆盖；运动控制仍建议补充 1 位候选。</p>
+            </div>
+            <div class="next-stage"><span>后续可扩展</span><p>添加项目角色后，可计算团队组合、人员冲突与跨组织协调路径。</p><button id="add-role-button">＋ 添加项目角色</button></div>
+            <button class="primary shortlist-primary" id="create-shortlist">生成候选名单</button>
+            <small class="privacy-note">跨组织候选默认仅展示授权摘要，发起沟通后进入确认流程。</small>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" id="succession">
+        <section class="succession-intro">
+          <div><h2>关键岗位梯队盘点</h2><p>把岗位风险、继任准备度和培养动作放在同一个决策视图中。</p></div>
+          <div class="succession-filters"><button>平台工程部 ⌄</button><button>2026 Q3 ⌄</button><button>全部岗位族 ⌄</button></div>
+        </section>
+        <div class="succession-metrics">
+          <article><span>关键岗位</span><strong>12</strong><small>本季度纳入盘点</small></article>
+          <article><span>健康岗位</span><strong>8</strong><small class="positive">较上季度 +2</small></article>
+          <article><span>高风险岗位</span><strong class="risk-number">2</strong><small>暂无成熟继任者</small></article>
+          <article><span>培养动作按期率</span><strong>71%</strong><small>5 项即将到期</small></article>
+        </div>
+        <div class="succession-layout">
+          <section class="panel succession-roles">
+            <div class="succession-section-head"><div><h3>岗位梯队健康度</h3><p>点击岗位查看候选梯队与差距</p></div><button id="succession-view-toggle">只看风险岗位</button></div>
+            <div class="succession-table-head"><span>关键岗位</span><span>现任者</span><span>立即接任</span><span>6–12 个月</span><span>健康度</span></div>
+            <div id="succession-role-list"></div>
+          </section>
+          <aside class="panel succession-detail" id="succession-detail" aria-live="polite"></aside>
+        </div>
+      </section>
+
+      <section class="page" id="team">
+        <section class="team-project-head panel">
+          <div class="team-project-copy"><span>组队方案 · 草稿</span><h2>具身智能业务探索</h2><p>2026.10–2027.01 · 4 个角色 · 目标投入 3.0 人月 / 月</p></div>
+          <div class="team-progress" aria-label="组队进度">
+            <div class="done"><i>1</i><span><b>定义角色</b><small>已完成</small></span></div><em></em>
+            <div class="active"><i>2</i><span><b>选择成员</b><small>进行中</small></span></div><em></em>
+            <div><i>3</i><span><b>协调确认</b><small>待开始</small></span></div>
+          </div>
+          <button class="team-head-action" id="new-team-role">＋ 添加角色</button>
+        </section>
+        <div class="team-builder-layout">
+          <aside class="panel team-role-panel">
+            <div class="team-panel-title"><div><h3>项目角色</h3><p><b id="filled-role-count">2</b> / 4 已配置</p></div><button id="edit-team-requirement">编辑需求</button></div>
+            <div id="team-role-list" class="team-role-list"></div>
+          </aside>
+          <section class="panel team-match-panel">
+            <div class="team-match-head"><div><span id="active-role-kicker">当前角色</span><h3 id="active-role-title">机器人感知算法</h3><p id="active-role-meta">需要 1 人 · 至少投入 50%</p></div><button id="recalculate-team">↻ 重新计算</button></div>
+            <div class="role-skill-line" id="active-role-skills"></div>
+            <div class="team-recommendation-note"><span>推荐逻辑</span><p id="active-role-reason">优先满足必需技能，再检查项目经历、可投入时间与团队互补。</p></div>
+            <div id="team-candidate-list" class="team-candidate-list" aria-live="polite"></div>
+          </section>
+          <aside class="panel team-summary-panel">
+            <div class="team-summary-head"><div><span>当前团队</span><h3><b id="team-member-count">2</b> / 4 人</h3></div><button id="unlock-team">解除锁定</button></div>
+            <div id="team-member-list" class="team-member-list"></div>
+            <div class="team-coverage">
+              <div><span>角色覆盖</span><b id="role-coverage">50%</b></div><i><em id="role-coverage-track" style="width:50%"></em></i>
+              <div><span>必需技能覆盖</span><b id="skill-coverage">78%</b></div><i><em id="skill-coverage-track" style="width:78%"></em></i>
+            </div>
+            <div class="team-alert" id="team-alert"><b>1 项投入冲突</b><p>陈然在 10 月已有核心项目，当前只能投入 20%。</p><button id="resolve-conflict">查看替代方案</button></div>
+            <button class="primary team-confirm" id="confirm-team" disabled>进入协调确认</button>
+            <small>确认前不会向候选人或其管理者发送通知。</small>
+          </aside>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div class="employee-lookup hidden" id="employee-lookup">
+    <label for="employee-lookup-input"><span>⌕</span><input id="employee-lookup-input" autocomplete="off" placeholder="搜索姓名、岗位或技能" /></label>
+    <div class="employee-lookup-list" id="employee-lookup-list" role="listbox" aria-label="员工搜索结果"></div>
+    <small>仅搜索你有权限查看的员工画像</small>
+  </div>
+  <div class="role-menu hidden" id="role-menu"><button data-role="employee"><b>员工工作台</b><span>我的成长与能力证明</span></button><button data-role="manager"><b>管理者工作台</b><span>团队能力与人才配置</span></button></div>
+  <div class="toast hidden" id="toast" role="status" aria-live="polite"></div>
+  <script src="./prototype.js?v=10"></script>
+</body>
+</html>

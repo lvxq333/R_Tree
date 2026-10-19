@@ -1,0 +1,94 @@
+body {
+  overflow-x: hidden;
+}
+
+@media (max-width: 1400px) {
+  .talent-layout {
+    grid-template-columns: 250px minmax(0, 1fr);
+  }
+
+  .team-composer {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .sidebar {
+    width: 76px;
+    padding: 20px 10px;
+  }
+
+  .brand {
+    justify-content: center;
+    padding: 0 0 24px;
+  }
+
+  .brand > div,
+  .workspace-switch > span,
+  .sidebar-foot > div:not(.avatar),
+  .sidebar-foot > button {
+    display: none;
+  }
+
+  .workspace-switch {
+    padding: 13px 4px;
+  }
+
+  .workspace-switch button {
+    justify-content: center;
+    font-size: 0;
+  }
+
+  .workspace-switch button::before {
+    content: "切换";
+    font-size:var(--text-meta);
+  }
+
+  .workspace-switch button span {
+    margin-left: 4px;
+    font-size:var(--text-meta);
+  }
+
+  .nav-item {
+    position: relative;
+    justify-content: center;
+    padding: 0;
+    font-size: 0;
+  }
+
+  .nav-item i {
+    width: auto;
+    font-size:var(--text-section);
+  }
+
+  .nav-item .count {
+    position: absolute;
+    top: 4px;
+    right: 3px;
+    padding: 1px 5px;
+    font-size:var(--text-caption);
+  }
+
+  .sidebar-foot {
+    display: flex;
+    justify-content: center;
+    padding-inline: 0;
+  }
+
+  main {
+    min-width: 0;
+    margin-left: 76px;
+  }
+
+  .topbar {
+    padding-inline: 22px;
+  }
+
+  .page {
+    padding-inline: 22px;
+  }
+
+  .role-menu {
+    left: 82px;
+  }
+}

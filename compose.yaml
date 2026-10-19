@@ -1,0 +1,19 @@
+name: skilltree-local
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: skilltree
+      POSTGRES_PASSWORD: skilltree_local_demo
+      POSTGRES_DB: skilltree
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - skilltree-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skilltree -d skilltree"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+volumes:
+  skilltree-data:

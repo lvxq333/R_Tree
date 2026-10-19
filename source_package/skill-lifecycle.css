@@ -1,0 +1,118 @@
+/* Skill level lifecycle: review, downgrade, evidence response and audit states. */
+
+.lifecycle-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border: 1px solid #ead8af;
+  border-radius: 12px;
+  background: #fffaf0;
+  color: #57441d;
+}
+
+.lifecycle-notice-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: #f9e8bd;
+  color: #7d5308;
+  font-size: var(--text-subtitle);
+  font-weight: 800;
+}
+
+.lifecycle-notice b,
+.lifecycle-notice p { display: block; }
+.lifecycle-notice b { font-size: var(--text-body); }
+.lifecycle-notice p { margin: 3px 0 0; color: #745f31; font-size: var(--text-meta); line-height: 1.55; }
+.lifecycle-notice button { min-height: 38px; border: 1px solid #d6b86e; border-radius: 8px; background: #fff; color: #765008; padding: 7px 11px; font: 700 var(--text-meta) inherit; cursor: pointer; }
+.lifecycle-notice button:hover { background: #fff4d9; }
+
+.cert-summary.has-five { grid-template-columns: repeat(5, 1fr); }
+.cert-summary .review-summary { background: #fffbf3; }
+.cert-summary .review-summary strong { color: #8a5b08; }
+
+.source-icon.lifecycle,
+.applicant-avatar.review { background: #fff2d8; color: #8a5b08; }
+.status-pill.review { background: #fff2d8; color: #805409; }
+
+.skill-star.is-review .signal-orbit { fill: rgba(239, 179, 71, .1); stroke: #efb347; stroke-width: 1.8; }
+.skill-star.is-review .star-core { fill: #d49a32; stroke: #ffe5a8; filter: url(#node-glow); }
+.skill-star.is-review .star-level { fill: #f2c56c; }
+.map-legend .review-dot { background: #e5aa3e; box-shadow: 0 0 7px rgba(229, 170, 62, .7); }
+
+.review-explanation { background: #fff8ea; color: #6f5524; }
+.review-explanation b { color: #503a12; }
+.review-deadline { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; overflow: hidden; margin: 14px 0; border: 1px solid #eadfc6; border-radius: 10px; background: #eadfc6; }
+.review-deadline div { padding: 10px 12px; background: #fffdf8; }
+.review-deadline dt { color: #7c6b49; font-size: var(--text-caption); }
+.review-deadline dd { margin: 4px 0 0; color: #4f3a14; font-size: var(--text-body); font-weight: 700; }
+.history-down { color: #9b4b22; font-weight: 800; }
+
+.review-type-label { display: inline-flex; margin-bottom: 6px; border-radius: 6px; background: #fff2d8; color: #805409; padding: 3px 7px; font-size: var(--text-caption); font-weight: 800; }
+.level-change.level-down { color: #a34d25; }
+.review-impact-note { display: grid; grid-template-columns: auto 1fr; gap: 9px; margin-top: 14px; padding: 11px 12px; border-radius: 9px; background: #fff7ed; color: #74431f; font-size: var(--text-meta); line-height: 1.55; }
+.review-impact-note b { color: #8d441d; }
+.downgrade-button { border-color: #a34d25 !important; background: #a34d25 !important; }
+
+.profile-skill-row { grid-template-columns: 1.15fr .48fr .72fr 1.35fr .55fr auto; }
+.profile-skill-row.needs-review { background: #fffbf3; }
+.profile-skill-row.is-reviewing { background: #fff6e3; box-shadow: inset 3px 0 0 #c58a23; }
+.profile-skill-recency b,
+.profile-skill-recency em { display: block; }
+.profile-skill-recency b { color: #596273; font-size: var(--text-caption); font-weight: 650; }
+.profile-skill-recency em { width: max-content; margin-top: 4px; border-radius: 5px; background: #eaf7f3; color: #167966; padding: 2px 6px; font-size: var(--text-caption); font-style: normal; font-weight: 750; }
+.profile-skill-recency em.review { background: #fff0d2; color: #825506; }
+.profile-skill-review-button { min-height: 34px; border: 1px solid #d9deea; border-radius: 7px; background: #fff; color: #46536d; padding: 6px 9px; font: 700 var(--text-caption) inherit; cursor: pointer; white-space: nowrap; }
+.profile-skill-review-button:hover { border-color: #aeb8cf; background: #f8f9fb; color: #28324a; }
+
+.profile-level-review { margin-top: 14px; border: 1px solid #e2cfaa; border-radius: 12px; background: #fffdf8; padding: 18px; }
+.profile-review-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid #eee3cc; }
+.profile-review-heading span { color: #9a5d14; font-size: var(--text-caption); font-weight: 800; }
+.profile-review-heading h4 { margin: 4px 0 5px; color: #382b18; font-size: var(--text-subtitle); }
+.profile-review-heading p { max-width: 68ch; margin: 0; color: #77674d; font-size: var(--text-meta); line-height: 1.55; }
+.profile-review-heading > button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: #f5efe3; color: #6d5c43; font-size: var(--text-subtitle); cursor: pointer; }
+#profile-level-review-form { display: grid; grid-template-columns: .8fr 1.2fr; gap: 14px 16px; margin-top: 15px; }
+#profile-level-review-form > label > span,
+.profile-review-levels label > span { display: block; margin-bottom: 7px; color: #554a39; font-size: var(--text-meta); font-weight: 700; }
+#profile-level-review-form select,
+#profile-level-review-form textarea { width: 100%; min-height: 42px; border: 1px solid #cfc6b7; border-radius: 8px; background: #fff; color: var(--ink); padding: 9px 10px; font: var(--text-body)/1.5 inherit; }
+#profile-level-review-form textarea { resize: vertical; }
+.profile-review-levels { display: flex; align-items: end; gap: 12px; }
+.profile-review-levels > span { min-width: 112px; border-radius: 8px; background: #f4f1ea; padding: 8px 10px; }
+.profile-review-levels small,
+.profile-review-levels b { display: block; }
+.profile-review-levels small { color: #7c705c; font-size: var(--text-caption); }
+.profile-review-levels b { margin-top: 3px; font-size: var(--text-section); }
+.profile-review-levels > i { padding-bottom: 10px; color: #a06b1a; font-style: normal; }
+.profile-review-levels label { flex: 1; }
+.profile-review-impact,
+.profile-review-confirm,
+.profile-review-actions { grid-column: 1 / -1; }
+.profile-review-impact { display: grid; grid-template-columns: auto 1fr; gap: 10px; border-radius: 8px; background: #fff5e4; color: #6c5227; padding: 10px 12px; font-size: var(--text-meta); line-height: 1.55; }
+.profile-review-confirm { display: flex; align-items: flex-start; gap: 9px; color: #5d5548; font-size: var(--text-meta); line-height: 1.5; }
+.profile-review-confirm input { width: 16px; height: 16px; margin-top: 2px; accent-color: var(--primary); }
+.profile-review-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 2px; }
+.profile-review-actions button { min-height: 40px; }
+
+@media (max-width: 1180px) {
+  .cert-summary.has-five { grid-template-columns: repeat(3, 1fr); }
+  .profile-skill-row { min-width: 840px; }
+}
+
+@media (max-width: 760px) {
+  .lifecycle-notice { grid-template-columns: auto 1fr; }
+  .lifecycle-notice button { grid-column: 1 / -1; width: 100%; }
+  .cert-summary.has-five { grid-template-columns: 1fr 1fr; }
+  #profile-level-review-form { grid-template-columns: 1fr; }
+  .profile-review-levels { grid-column: 1 / -1; }
+  .review-deadline { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .profile-skill-row { scroll-behavior: auto; }
+}
