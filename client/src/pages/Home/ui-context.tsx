@@ -5,6 +5,7 @@ import type { PageId, Role } from './types';
 export const PAGE_TITLE_MAP: Record<PageId, [string, string, string]> = {
   overview: ['成长概览', '聚焦目标、差距与下一步行动', '更新成长计划'],
   evidence: ['技能池', '查看当前技能、成长信号与点亮进度', '申请点亮技能'],
+  judging: ['资格自查', '对照职称标准查看 4 项要求达标情况与 Gap', '提交申请'],
   idp: ['个人职业发展计划', '基于个人情况与 Gap 生成的 24 个月职业生涯规划', '导出 IDP'],
   manager: ['团队概览', '看见能力供需、梯队风险与培养动作', '导出盘点摘要'],
   approval: ['认证与复核', '核对证据与等级锚点，处理技能升级、维持与降级', '批量处理'],

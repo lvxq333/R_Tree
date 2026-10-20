@@ -532,3 +532,81 @@ export interface CreateTeamRoleInput {
   skills: TeamRoleSkill[];
   candidates: string[];
 }
+
+/* ========== 判断层（M2）：资格 / 进度 / Gap ========== */
+
+/** 单个职称层的判定状态。certified 已持有或被更高职称覆盖；ready 已达标可提交；preparing 仍在补；blocked 被规则挡住。 */
+export type ReadinessState = 'certified' | 'ready' | 'preparing' | 'blocked';
+
+export interface JudgingBlocker {
+  code: 'already-certified' | 'higher-title-held' | 'same-target-applying' | 'rejected-cooldown' | 'appeal-open';
+  message: string;
+  /** 冷却类阻断的解除时间 */
+  until?: string;
+}
+
+export interface JudgingRequirement {
+  skillSlug: string;
+  skillName: string;
+  requiredLevel: number;
+  currentLevel: number;
+  /** requiredLevel - currentLevel，最小 0 */
+  gapLevels: number;
+  met: boolean;
+  competencySlugs: string[];
+}
+
+export interface JudgingLevelView {
+  trackSlug: string;
+  trackName: string;
+  levelOrder: number;
+  levelCode: string;
+  levelName: string;
+  state: ReadinessState;
+  met: number;
+  total: number;
+  /** 目标层比已持有职称高出不止一级，提交时需追加独立专家复核 */
+  isCrossLevel: boolean;
+  blockers: JudgingBlocker[];
+  requirements: JudgingRequirement[];
+}
+
+export interface JudgingOverview {
+  employeeSlug: string;
+  /** 当前持有的最高职称；无职称为 null */
+  currentTitle: { trackSlug: string; levelOrder: number; levelCode: string; levelName: string } | null;
+  /** 按部门与岗位推断的所属序列，用于默认选中与候选去重；无法判断时为 null */
+  preferredTrack: string | null;
+  tracks: { slug: string; name: string; levels: JudgingLevelView[] }[];
+}
+
+export interface JudgingResource {
+  slug: string;
+  kind: string;
+  title: string;
+  url: string | null;
+  estimatedEffort: string | null;
+  evidenceTemplate: string | null;
+}
+
+/** 单层 Gap 详情：在层级视图上补子能力名与可提交材料方向 */
+export interface JudgingGapDetail extends JudgingLevelView {
+  gapItems: (JudgingRequirement & { competencyNames: string[]; resources: JudgingResource[] })[];
+}
+
+export interface JudgingCandidate {
+  /** 稳定标识，用于忽略与冷却，形如 title:software:T2 */
+  key: string;
+  kind: 'candidate-application' | 'candidate-evidence';
+  title: string;
+  description: string;
+  trackSlug: string;
+  levelCode: string;
+  met: number;
+  total: number;
+  dismissed: boolean;
+}
+
+export interface JudgingCandidatesResponse {
+  items: JudgingCandidate[];
+}

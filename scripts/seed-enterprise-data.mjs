@@ -12,6 +12,7 @@
 
 import { randomUUID, randomBytes } from 'node:crypto';
 import { scryptSync } from 'node:crypto';
+import { JUDGING_SAMPLE_SKILLS } from './judging-samples.mjs';
 
 // ============================================================
 // 1. 员工基本信息（23 人，只覆盖 MVP 三条技术序列）
@@ -175,6 +176,10 @@ const INITIAL_SKILLS = [
 
   // 高峰（数据工程专家）：已有数据处理 L4
   { employee: 'gao-feng', skill: 'data-processing', level: 4, certifiedAt: '2024-04-22' },
+
+  // M2 判断层样本：造出「可申请 / 只差一项」的达标梯度，
+  // 明细与预期见 scripts/judging-samples.mjs，存量库用 npm run db:seed:judging 补。
+  ...JUDGING_SAMPLE_SKILLS,
 ];
 
 // ============================================================

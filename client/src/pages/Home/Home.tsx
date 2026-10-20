@@ -4,6 +4,7 @@ import { PAGE_TITLE_MAP, UIProvider, isManagerSurface, useUI } from './ui-contex
 import { CertificationProvider, useCertifications } from './certification-context';
 import type { PageId } from './types';
 import OverviewPage from './OverviewPage';
+import JudgingPage from './JudgingPage';
 import IDPPage from './IDPPage';
 import EvidencePage from './EvidencePage';
 import ManagerPage from './ManagerPage';
@@ -20,6 +21,7 @@ import ValidationInbox from './ValidationInbox';
 
 const EMPLOYEE_NAV: { page: PageId; icon: string; label: string; count?: 'evidence' }[] = [
   { page: 'overview', icon: '⌂', label: '成长概览' },
+  { page: 'judging', icon: '◎', label: '资格自查' },
   { page: 'idp', icon: '◈', label: '个人发展计划' },
   { page: 'evidence', icon: '✦', label: '技能池', count: 'evidence' },
 ];
@@ -35,6 +37,7 @@ const MANAGER_NAV: { page: PageId; icon: string; label: string; count?: 'approva
 function renderActivePage(page: PageId) {
   switch (page) {
     case 'overview': return <OverviewPage />;
+    case 'judging': return <JudgingPage />;
     case 'idp': return <IDPPage />;
     case 'evidence': return <EvidencePage />;
     case 'manager': return <ManagerPage />;

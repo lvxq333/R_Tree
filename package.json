@@ -19,8 +19,9 @@
     "db:migrate:mvp": "node scripts/migrate-mvp.mjs",
     "db:schema:mvp": "node scripts/gen-mvp-schema.mjs",
     "db:seed:standards": "node scripts/seed-mvp-standards.mjs",
+    "db:seed:judging": "node scripts/seed-judging-samples.mjs",
     "db:migrate:legacy-skills": "node scripts/migrate-legacy-skills.mjs",
-    "db:seed:mvp": "npm run db:migrate:mvp && npm run db:seed:enterprise && npm run db:seed:standards && npm run db:migrate:legacy-skills",
+    "db:seed:mvp": "npm run db:migrate:mvp && npm run db:seed:enterprise && npm run db:seed:standards && npm run db:migrate:legacy-skills && npm run db:seed:judging",
     "docs:standards": "node scripts/render-standards-draft.mjs",
     "db:seed:facts": "node scripts/seed-facts.mjs",
     "db:start": "node scripts/local-db.mjs start",
@@ -33,6 +34,7 @@
     "validation:prepare": "node scripts/validation-demo.mjs prepare",
     "validation:serve": "node scripts/validation-demo.mjs serve",
     "test:candidates": "npm run build:server && node scripts/test-candidates.mjs",
+    "test:judging": "node scripts/test-judging.mjs",
     "db:start:docker": "docker compose up -d db",
     "db:seed:enterprise": "node scripts/seed-enterprise-data.mjs > scripts/seed-enterprise-data.sql && PGPASSWORD=skilltree_local_demo psql -h 127.0.0.1 -p 55432 -U skilltree -d skilltree -f scripts/seed-enterprise-data.sql"
   },

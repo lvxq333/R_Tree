@@ -3,6 +3,7 @@ import type { ProfileProject } from '@shared/api.interface';
 export type PageId =
   | 'overview'
   | 'evidence'
+  | 'judging'
   | 'idp'
   | 'manager'
   | 'profile'
