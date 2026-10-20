@@ -2,7 +2,131 @@
 
 /* ========== 基础枚举 ========== */
 export type Role = 'employee' | 'manager';
+
+export interface AuthUser {
+  accountId: string;
+  employeeId: string;
+  username: string;
+  name: string;
+  feishuLinked: boolean;
+  employeeSlug: string;
+  accessRole: Role;
+  org: string;
+  position: string;
+}
+export interface RegisterInput { username: string; password: string; name: string; org?: string; position?: string; hireDate?: string }
+export interface AuthConfig { feishuEnabled: boolean; ssoEnabled: boolean; validationMode?: boolean }
+
+/* 事实中心基础契约：事实不等于能力评估或技能认证。 */
+export const FACT_KINDS = ['project', 'performance', 'legacy_evidence', 'git_commit', 'okr', 'employee_transfer', 'work_artifact'] as const;
+export interface FactRecord {
+  id: string;
+  employeeId: string;
+  sourceTable: string;
+  sourceKey: string;
+  kind: typeof FACT_KINDS[number];
+  title: string;
+  occurrenceLabel: string | null;
+  content: Record<string, unknown>;
+  version: number;
+  status: 'active' | 'deleted';
+  provenance: 'local_legacy_import' | 'simulated' | 'validation_fixture';
+  updatedAt: string;
+}
+export interface FactChange {
+  cursor: string;
+  operation: 'created' | 'updated' | 'deleted';
+  fact: FactRecord;
+  recordedAt: string;
+}
+export interface FactCenterStatus {
+  employee: { name: string; slug: string; org: string | null; role: string | null; hireDate: string | null } | null;
+  adapter: 'local-database';
+  externalConnected: false;
+  pollIntervalSeconds: number;
+  lastCheckedAt: string | null;
+  lastChangedAt: string | null;
+  healthy: boolean;
+  employeeId: string;
+  activeCount: number;
+  deletedCount: number;
+  countsByKind: Record<string, number>;
+  assessment: 'not-configured' | 'available';
+  unavailableSources: string[];
+  simulatedSources: string[];
+}
 export type GapSource = 'career' | 'okr' | 'current' | 'profile';
+
+export interface AbilityStandard {
+  id: string;
+  name: string;
+  anchors: string[]; // L1~L5，按数组顺序
+}
+export interface SkillAssessmentStandard {
+  skillSlug: string;
+  name: string;
+  version: string;
+  hash: string;
+  abilities: AbilityStandard[];
+}
+export interface AssessmentCitation { factId: string; version: number; quote: string }
+export interface AbilityAssessment {
+  abilityId: string;
+  supportedLevel: number | null;
+  reason: string;
+  citations: AssessmentCitation[];
+  gaps: string[];
+  questions: string[];
+}
+export interface AssessmentResult {
+  abilities: AbilityAssessment[];
+  supportedCount: number;
+  gapCount: number;
+  totalCount: number;
+}
+export interface SkillAssessment {
+  id: string;
+  status: 'queued' | 'running' | 'completed' | 'failed';
+  targetLevel: number;
+  standardVersion: string;
+  factIds: string[];
+  selfMaterial: string;
+  result: AssessmentResult | null;
+  error: string | null;
+  stale: boolean;
+  createdAt: string;
+}
+export interface AssessmentMaterial {
+  id: string;
+  version: number;
+  title: string;
+  kind: FactRecord['kind'];
+  detail: string;
+  recommended: boolean;
+}
+export interface AssessmentWorkspace {
+  standard: SkillAssessmentStandard;
+  materials: AssessmentMaterial[];
+  latest: SkillAssessment | null;
+}
+export interface CreateAssessmentInput { targetLevel: number; factIds: string[]; selfMaterial: string }
+export interface CandidateSuggestion {
+  skillSlug: string;
+  targetLevel: number;
+  reason: string;
+  limitations: string[];
+  citations: AssessmentCitation[];
+}
+export interface CandidateDiscoveryResult {
+  candidates: CandidateSuggestion[];
+  notSuggested: { skillSlug: string; reason: string }[];
+}
+export interface ValidationWorkspace {
+  testOnly: true;
+  materials: FactRecord[];
+  job: { id: string; status: 'queued' | 'running' | 'completed' | 'failed'; error: string | null; model: string; result: CandidateDiscoveryResult | null } | null;
+  notices: { id: string; title: string; message: string; certificationSlug: string; citations: AssessmentCitation[]; readAt: string | null; status: string; createdAt: string }[];
+}
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'returned' | 'maintained' | 'extended';
 export type ApprovalAction = 'approve' | 'return' | 'reject' | 'maintain' | 'extend' | 'downgrade';
 export type CertificationDecision = 'submit' | 'resubmit' | 'dismiss' | 'add-evidence' | 'explain';
@@ -18,6 +142,42 @@ export interface EmployeeListItem {
   tone: string;
   role: string;
   org: string;
+}
+
+/** 当前登录员工的基础工作台数据；身份与权限以服务端会话为准。 */
+export interface EmployeeWorkspaceResponse {
+  workFactCount: number;
+  employee: {
+    id: string;
+    slug: string;
+    name: string;
+    avatar: string;
+    role: string;
+    org: string;
+    summary: string;
+    hireDate: string | null;
+    tenureMonths: number | null;
+    company: string | null;
+    jobGrade: string | null;
+    workLocation: string | null;
+  };
+  metrics: {
+    certifiedSkillCount: number;
+    averageSkillLevel: number | null;
+    superEmployeeLevel: number | null;
+    recentUpgradeCount: number;
+    candidateCount: number;
+    maturity: { expert: number; core: number; growth: number };
+  };
+  databaseUpdatedAt: string;
+  loadedAt: string;
+  factsSync: {
+    status: 'not-connected' | 'idle' | 'syncing' | 'error';
+    pollIntervalSeconds: number;
+    lastCheckedAt: string | null;
+    lastChangedAt: string | null;
+  };
+  source: 'local-demo';
 }
 
 export interface ProfileSkillMeta {

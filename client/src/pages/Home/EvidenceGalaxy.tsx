@@ -1,3 +1,5 @@
+import { useEmployeeWorkspace } from './employee-workspace-context';
+import { useAuth } from './auth-context';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CertificationItem } from './certification-context';
 
@@ -122,6 +124,8 @@ export interface EvidenceGalaxyProps {
 }
 
 const EvidenceGalaxy = ({ certifications, onOpenDetail, onApply }: EvidenceGalaxyProps) => {
+  const { user } = useAuth();
+  const { workspace } = useEmployeeWorkspace();
   const stageRef = useRef<HTMLDivElement>(null);
   const cameraRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef({ tiltX: 0, tiltY: 0, zoom: 1 });
@@ -204,8 +208,12 @@ const EvidenceGalaxy = ({ certifications, onOpenDetail, onApply }: EvidenceGalax
     applyView();
   };
 
+  const findCertification = (id: string) => {
+    const label = GALAXY_NODES.find(node => node.id === id)?.label;
+    return certifications.find(entry => entry.id === id || Boolean(label && (entry.title === label || entry.title.startsWith(`${label}（`))));
+  };
   const getSkill = (id: string): GalaxySkillView | undefined => {
-    const item = certifications.find((entry: CertificationItem) => entry.id === id);
+    const item = findCertification(id);
     if (item) {
       return {
         title: item.title,
@@ -254,13 +262,13 @@ const EvidenceGalaxy = ({ certifications, onOpenDetail, onApply }: EvidenceGalax
   };
 
   const selectionInCertifications = selectionSkill
-    ? certifications.some((entry: CertificationItem) => entry.id === selectedNode)
+    ? Boolean(findCertification(selectedNode))
     : false;
 
   return (
     <section className="skill-galaxy panel" aria-labelledby="skill-map-title">
       <header className="galaxy-header">
-        <div><span className="cert-kicker">我的能力星图</span><h2 id="skill-map-title">技能地图</h2><p>点亮 6 项技能，3 项出现新的成长信号</p></div>
+        <div><span className="cert-kicker">我的能力星图</span><h2 id="skill-map-title">技能地图</h2><p>已点亮 {workspace?.metrics.certifiedSkillCount ?? 0} 项技能，{certifications.filter(item => item.status === 'ready').length} 项出现新的成长信号</p></div>
         <div className="galaxy-actions"><button className="galaxy-help" id="galaxy-help" onClick={() => setLegendEmphasized((prev: boolean) => !prev)}>{legendEmphasized ? '已突出图例' : '图例说明'}</button><button className="primary" id="open-self-application" onClick={() => onApply(null)}>申请点亮技能</button></div>
       </header>
       <div className="sequence-tabs" role="tablist" aria-label="选择技能序列">
@@ -288,7 +296,7 @@ const EvidenceGalaxy = ({ certifications, onOpenDetail, onApply }: EvidenceGalax
           id="galaxy-camera"
           ref={cameraRef}
         >
-          <svg className="constellation-map" viewBox="0 0 1080 450" role="img" aria-label="张三的技能关系地图，技能按软件开发、平台工程、数据与 AI、通用能力连接">
+          <svg className="constellation-map" viewBox="0 0 1080 450" role="img" aria-label={`${user.name}的技能关系地图，技能按软件开发、平台工程、数据与 AI、通用能力连接`}>
             <defs>
               <radialGradient id="galaxy-core" cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#6578ff" stopOpacity=".24" /><stop offset="1" stopColor="#111a32" stopOpacity="0" /></radialGradient>
               <filter id="node-glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
@@ -341,7 +349,7 @@ const EvidenceGalaxy = ({ certifications, onOpenDetail, onApply }: EvidenceGalax
                   data-status={status}
                   tabIndex={0}
                   role="button"
-                  aria-label={node.ariaLabel}
+                  aria-label={`${skill?.title ?? node.label}，${skill ? starLevelText(skill) : '未点亮'}`}
                   transform={`translate(${node.x} ${node.y})`}
                   onClick={() => setSelectedNode(node.id)}
                   onKeyDown={(event: React.KeyboardEvent<SVGGElement>) => handleNodeKeyDown(event, node.id)}
@@ -377,7 +385,7 @@ const EvidenceGalaxy = ({ certifications, onOpenDetail, onApply }: EvidenceGalax
               <p>{selectionSkill.explanation}</p>
               <button
                 onClick={() => {
-                  if (selectionInCertifications) onOpenDetail(selectedNode);
+                  if (selectionInCertifications) onOpenDetail(findCertification(selectedNode)!.id);
                   else onApply(selectionSkill.title);
                 }}
               >

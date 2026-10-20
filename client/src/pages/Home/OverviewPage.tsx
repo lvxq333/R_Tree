@@ -12,7 +12,7 @@ import type {
   SkillGrowthEvent,
 } from '@shared/api.interface';
 import { useUI } from './ui-context';
-import { useCertifications } from './certification-context';
+import { useEmployeeWorkspace } from './employee-workspace-context';
 import {
   COMMON_SKILL_NAMES,
   SEQUENCE_LABELS,
@@ -45,8 +45,8 @@ const GROWTH_RANGES: { key: GrowthRangeKey; label: string }[] = [
 ];
 
 const OverviewPage = () => {
-  const { navigate } = useUI();
-  const { readyCount } = useCertifications();
+  const { navigate, showToast } = useUI();
+  const { workspace, error: workspaceError } = useEmployeeWorkspace();
   const [sequences, setSequences] = useState<CareerSequenceView[] | null>(null);
   const [growthEvents, setGrowthEvents] = useState<SkillGrowthEvent[] | null>(null);
   const [gapItems, setGapItems] = useState<GapPoolItem[] | null>(null);
@@ -116,20 +116,54 @@ const OverviewPage = () => {
     return () => { cancelled = true; };
   }, [growthRange]);
 
-  if (loadError) {
+  if (loadError || (!workspace && workspaceError)) {
     return (
       <section className="page active" id="overview">
-        <div className="skill-model-note"><span>{loadError}</span></div>
+        <div className="skill-model-note" role="alert"><span>{loadError ?? workspaceError}</span></div>
       </section>
     );
   }
-  if (!sequences || !gapItems || !growthEvents) {
+  if (!sequences || !gapItems || !growthEvents || !workspace) {
     return (
       <section className="page active" id="overview">
         <div className="skill-model-note"><span>成长数据加载中…</span></div>
       </section>
     );
   }
+
+  const { employee: currentEmployee, metrics } = workspace;
+  const readyCount = metrics.candidateCount;
+  const tenure = currentEmployee.tenureMonths;
+  const tenureText = tenure === null ? '入职时间未维护' : `${currentEmployee.hireDate} 入职，已在职 ${Math.floor(tenure / 12)} 年 ${tenure % 12} 个月`;
+  const hour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  const greetingText = hour < 12 ? '早上好' : hour < 18 ? '下午好' : '晚上好';
+  const expertEnd = metrics.certifiedSkillCount ? metrics.maturity.expert / metrics.certifiedSkillCount * 100 : 0;
+  const coreEnd = metrics.certifiedSkillCount ? (metrics.maturity.expert + metrics.maturity.core) / metrics.certifiedSkillCount * 100 : 0;
+  const maturityBackground = `radial-gradient(circle, #fff 0 48%, transparent 50%), conic-gradient(#625df0 0 ${expertEnd}%, #8d56ee ${expertEnd}% ${coreEnd}%, #34b4d1 ${coreEnd}% 100%)`;
+  const identityText = [
+    currentEmployee.name,
+    `企业：${currentEmployee.company ?? '未维护'}`,
+    `部门：${currentEmployee.org || '未维护'}`,
+    `当前岗位：${currentEmployee.role || '未维护'}`,
+    `职级：${currentEmployee.jobGrade ?? '未维护'}`,
+    `工作地点：${currentEmployee.workLocation ?? '未维护'}`,
+  ].join('\n');
+  const copyIdentity = async () => {
+    try {
+      await navigator.clipboard.writeText(identityText);
+      showToast('已复制当前员工身份信息。');
+    } catch {
+      showToast('复制失败，请检查浏览器剪贴板权限。');
+    }
+  };
+  const shareIdentity = async () => {
+    if (!navigator.share) { await copyIdentity(); return; }
+    try {
+      await navigator.share({ title: `${currentEmployee.name}的技能树名片`, text: identityText });
+    } catch (cause) {
+      if (!(cause instanceof Error && cause.name === 'AbortError')) showToast('分享未完成，可使用“复制信息”。');
+    }
+  };
 
   const sequenceByKey = new Map<string, CareerSequenceView>(
     sequences.map((item: CareerSequenceView): [string, CareerSequenceView] => [item.key, item]),
@@ -151,7 +185,7 @@ const OverviewPage = () => {
   const lastEvent = growthEvents[growthEvents.length - 1];
   const effectiveSelectedDate = growthEvents.some((item: SkillGrowthEvent) => item.date === selectedGrowthDate)
     ? selectedGrowthDate
-    : lastEvent.date;
+    : lastEvent?.date ?? '';
   const selectedEvent = growthEvents.find((item: SkillGrowthEvent) => item.date === effectiveSelectedDate) ?? lastEvent;
   const xStep = growthEvents.length > 1
     ? (GROWTH_CHART_RIGHT - GROWTH_CHART_LEFT) / (growthEvents.length - 1)
@@ -164,7 +198,7 @@ const OverviewPage = () => {
     event: item,
   }));
   const linePath = growthCurvePath(growthPoints);
-  const areaPath = `${linePath} L ${growthPoints[growthPoints.length - 1].x} ${GROWTH_CHART_BOTTOM} L ${growthPoints[0].x} ${GROWTH_CHART_BOTTOM} Z`;
+  const areaPath = growthPoints.length ? `${linePath} L ${growthPoints[growthPoints.length - 1].x} ${GROWTH_CHART_BOTTOM} L ${growthPoints[0].x} ${GROWTH_CHART_BOTTOM} Z` : '';
 
   const handleChannelChange = (next: ChannelKey): void => {
     setChannel(next);
@@ -188,59 +222,52 @@ const OverviewPage = () => {
   return (
     <section className="page active" id="overview">
       <section className="profile-hero">
-        <div className="profile-avatar">张</div>
-        <div><h2>早上好，张三</h2><p>今天是你成长的第 1,286 天，继续加油！</p><span>持续构建可靠、易演进的平台能力。 <button aria-label="编辑个人简介">✎</button></span></div>
+        <div className="profile-avatar">{currentEmployee.avatar}</div>
+        <div><h2>{greetingText}，{currentEmployee.name}</h2><p>{tenureText}</p><span>{currentEmployee.summary || '个人简介未维护'} <button aria-label="编辑个人简介">✎</button></span></div>
         <button className="hero-skill-signal" onClick={() => navigate('evidence')}>
           <i className="hero-signal-orbit" aria-hidden="true"></i><span className="hero-signal-icon">✦</span>
-          <span><b><strong>{readyCount}</strong> 项技能出现点亮信号</b><small>容器与编排（K8s）依据完整度 86%，等待确认</small></span>
+          <span><b><strong>{readyCount}</strong> 项技能出现点亮信号</b><small>{readyCount ? '查看已有候选技能，核对证据后发起申请' : '暂无待确认的候选技能'}</small></span>
           <em>查看 →</em>
         </button>
         <button className="hero-add" aria-label="新增成长记录">＋</button>
       </section>
 
       <div className="profile-metrics">
-        <article><i className="metric-icon purple">▱</i><div><span>总技能</span><strong>18</strong></div></article>
-        <article><i className="metric-icon amber">▥</i><div><span>平均技能等级</span><strong>L2.8</strong></div></article>
-        <article><i className="metric-icon blue">AI</i><div><span>超级员工</span><strong>L2</strong></div></article>
-        <article><i className="metric-icon rose">↗</i><div><span>成长速度（近三月升级次数）</span><strong>3</strong></div></article>
+        <article title="按有效当前认证去重统计；待复核保留当前等级，候选和待补充申请不计入"><i className="metric-icon purple">▱</i><div><span>总技能</span><strong>{metrics.certifiedSkillCount}</strong></div></article>
+        <article><i className="metric-icon amber">▥</i><div><span>平均技能等级</span><strong>{metrics.averageSkillLevel === null ? '—' : `L${metrics.averageSkillLevel.toFixed(1)}`}</strong></div></article>
+        <article title="现有数据库未维护该指标，暂不推算"><i className="metric-icon blue">AI</i><div><span>超级员工</span><strong>{metrics.superEmployeeLevel === null ? '—' : `L${metrics.superEmployeeLevel}`}</strong></div></article>
+        <article title="按近三个自然月的明确等级提升事件统计，首次点亮和降级不计为升级"><i className="metric-icon rose">↗</i><div><span>成长速度（近三月升级次数）</span><strong>{metrics.recentUpgradeCount}</strong></div></article>
       </div>
+
+      {workspace.workFactCount === 0 && <section className="panel" style={{ padding: '20px 24px', marginBottom: 18 }}><h3>工作记录从这里开始</h3><p>事实中心已登记你的基本信息，目前有 0 条工作事实。项目、绩效和工作成果接入后，会显示在你的工作台中。</p></section>}
 
       <div className="profile-insights">
         <section className="panel radar-panel">
           <div className="section-head compact">
-            <div><h3>能力结构分布</h3><p>我的水平与团队平均对比</p></div>
+            <div><h3>能力结构分布</h3><p>依据当前员工的能力评估结果展示</p></div>
             <button className="radar-skill-entry" onClick={() => navigate('evidence')}>进入技能池 <span><b>{readyCount}</b> 待确认</span></button>
           </div>
-          <svg className="radar-chart" viewBox="0 0 420 250" role="img" aria-label="能力结构雷达图">
-            <g transform="translate(210 124)" fill="none" stroke="#d9deef">
-              <polygon points="0,-92 80,-46 80,46 0,92 -80,46 -80,-46" /><polygon points="0,-69 60,-34 60,34 0,69 -60,34 -60,-34" /><polygon points="0,-46 40,-23 40,23 0,46 -40,23 -40,-23" /><polygon points="0,-23 20,-11 20,11 0,23 -20,11 -20,-11" />
-              <line x1="0" y1="0" x2="0" y2="-92" /><line x1="0" y1="0" x2="80" y2="-46" /><line x1="0" y1="0" x2="80" y2="46" /><line x1="0" y1="0" x2="0" y2="92" /><line x1="0" y1="0" x2="-80" y2="46" /><line x1="0" y1="0" x2="-80" y2="-46" />
-              <polygon points="0,-73 52,-30 58,34 0,64 -62,36 -48,-28" fill="rgba(128,91,244,.20)" stroke="#8b67f6" strokeWidth="2" />
-              <polygon points="0,-45 65,-37 45,26 0,48 -40,23 -30,-17" fill="rgba(73,126,242,.18)" stroke="#5790ef" strokeWidth="2" />
-            </g>
-            <g fill="#697386" fontSize="12" textAnchor="middle"><text x="210" y="18">研发工程能力</text><text x="345" y="79">系统设计</text><text x="346" y="186">工程质量</text><text x="210" y="239">协作与影响</text><text x="75" y="186">业务理解</text><text x="72" y="79">问题解决</text></g>
-          </svg>
-          <div className="chart-legend"><span><i className="legend-purple"></i>我的水平</span><span><i className="legend-blue"></i>团队平均</span></div>
+          <div className="empty-panel" style={{ padding: '55px 20px' }}><p style={{ color: '#667085' }}>尚未生成能力结构评估</p></div>
         </section>
         <section className="panel maturity-panel">
-          <div className="section-head compact"><div><h3>能力成熟度分布</h3><p>18 项已认证技能</p></div></div>
-          <div className="donut"><div><strong>18</strong><span>项技能</span></div></div>
+          <div className="section-head compact"><div><h3>能力成熟度分布</h3><p>{metrics.certifiedSkillCount} 项有效认证技能</p></div></div>
+          <div className="donut" style={{ background: metrics.certifiedSkillCount ? maturityBackground : '#edf0f5' }}><div><strong>{metrics.certifiedSkillCount}</strong><span>项技能</span></div></div>
           <ul>
-            <li><i className="dot-expert"></i><span>专家能力（L4-L5）</span><b>3</b></li>
-            <li><i className="dot-core"></i><span>核心能力（L3）</span><b>7</b></li>
-            <li><i className="dot-growth"></i><span>进阶能力（L1-L2）</span><b>8</b></li>
+            <li><i className="dot-expert"></i><span>专家能力（L4-L5）</span><b>{metrics.maturity.expert}</b></li>
+            <li><i className="dot-core"></i><span>核心能力（L3）</span><b>{metrics.maturity.core}</b></li>
+            <li><i className="dot-growth"></i><span>进阶能力（L1-L2）</span><b>{metrics.maturity.growth}</b></li>
           </ul>
         </section>
         <section className="panel identity-panel">
           <div className="section-head compact"><div><h3>身份信息</h3><p>仅本人和授权管理者可见</p></div></div>
-          <dl><div><dt>企业</dt><dd>示例科技集团</dd></div><div><dt>部门</dt><dd>平台研发部</dd></div><div><dt>当前岗位</dt><dd>初级软件开发工程师</dd></div><div><dt>职级</dt><dd>T1-2</dd></div><div><dt>工作地点</dt><dd>北京</dd></div></dl>
-          <div className="identity-actions"><button className="primary">分享名片</button><button className="ghost">复制信息</button></div>
+          <dl><div><dt>企业</dt><dd>{currentEmployee.company ?? '未维护'}</dd></div><div><dt>部门</dt><dd>{currentEmployee.org || '未维护'}</dd></div><div><dt>当前岗位</dt><dd>{currentEmployee.role || '未维护'}</dd></div><div><dt>职级</dt><dd>{currentEmployee.jobGrade ?? '未维护'}</dd></div><div><dt>工作地点</dt><dd>{currentEmployee.workLocation ?? '未维护'}</dd></div></dl>
+          <div className="identity-actions"><button className="primary" onClick={() => { void shareIdentity(); }}>分享名片</button><button className="ghost" onClick={() => { void copyIdentity(); }}>复制信息</button></div>
         </section>
       </div>
 
       <section className="panel career-panel">
         <div className="section-head">
-          <div><h3>职业发展路线</h3><p>系统根据当前岗位、技能证据和发展偏好推荐；点击节点查看能力满足情况</p></div>
+          <div><h3>职业发展路线</h3><p>统一岗位能力要求与当前员工的有效认证等级对照</p></div>
           <div className="career-controls">
             <div className={`sequence-picker ${channel === 'tech' ? '' : 'hidden'}`} ref={pickerRef}>
               <button className="sequence-trigger" aria-expanded={sequenceMenuOpen} aria-controls="sequence-menu" onClick={() => setSequenceMenuOpen((open) => !open)}>
@@ -266,8 +293,7 @@ const OverviewPage = () => {
         <div className="career-route">
           {careerNodes.map((node, index) => {
             const classes: string[] = ['career-node'];
-            if (index <= 1) classes.push('reached');
-            if (index === 0) classes.push('current');
+            if (node.coverage >= 100) classes.push('reached');
             if (node.id === selectedNode.id) classes.push('selected');
             return (
               <button key={node.id} className={classes.join(' ')} onClick={() => setSelectedNodeId(node.id)}>
@@ -311,6 +337,7 @@ const OverviewPage = () => {
             ))}
           </div>
           <div className="gap-pool-list">
+            {gapItems.length === 0 && <p>暂无个人 Gap 记录。</p>}
             {gapItems.map((item: GapPoolItem) => (
               <article key={item.title} data-gap-source={item.source} className={gapFilter !== 'all' && item.source !== gapFilter ? 'is-hidden' : ''}>
                 <div className={`gap-source ${item.source}`}>{item.sourceLabel}</div>
@@ -329,19 +356,14 @@ const OverviewPage = () => {
 
         <section className="panel recommendation-panel">
           <div className="section-head"><div><h3>针对 Gap 的行动建议</h3><p>课程只是其中一种方式，建议同时包含学习、实践、导师反馈和可验证交付</p></div><button className="ghost idp-entry" onClick={() => navigate('idp')}>查看完整 IDP →</button></div>
-          <div className="recommendation-grid">
-            <article><span className="resource-label internal">新知社课程</span><h4>系统设计：从模块到架构</h4><p>对应 Gap：系统设计与模块拆分 · 建议本月完成</p><div><span>6 节 · 预计 3 小时</span><button>加入学习计划</button></div></article>
-            <article><span className="resource-label external">外部资源</span><h4>Google SRE Workbook：SLO 实践</h4><p>对应 Gap：服务稳定性与 SLO 设计 · 中文导读已收录</p><div><span>文章 · 45 分钟</span><button>查看资源</button></div></article>
-            <article><span className="resource-label practice">岗位实践</span><h4>负责一次核心服务 SLO 方案评审</h4><p>对应 OKR：核心服务可用性提升至 99.95%</p><div><span>证明：方案 + 评审记录</span><button>创建行动</button></div></article>
-            <article><span className="resource-label mentor">导师建议</span><h4>与架构师进行 2 次方案拆解</h4><p>重点反馈：边界识别、容量预估与故障降级</p><div><span>推荐导师 3 人</span><button>查看导师</button></div></article>
-          </div>
+          <div className="empty-panel" style={{ padding: '30px 20px' }}><p>尚未生成行动建议，可先查看或制定个人发展计划。</p></div>
         </section>
       </div>
 
       <section className="panel growth-curve-panel" aria-labelledby="growth-curve-title">
         <div className="growth-curve-head">
-          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>记录正式通过审批的技能，升级和待审批申请不会提前计入曲线</p></div>
-          <div className="growth-curve-summary"><span>当前已点亮 <b>18</b> 项</span><span>近 6 个月 <b>+5</b></span></div>
+          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>历史轨迹按原记录保留；当前有效认证以技能明细为准</p></div>
+          <div className="growth-curve-summary"><span>当前有效 <b>{metrics.certifiedSkillCount}</b> 项</span><span>历史累计 <b>{lastEvent?.total ?? 0}</b> 项</span></div>
           <div className="growth-range" role="tablist" aria-label="选择成长轨迹时间范围">
             {GROWTH_RANGES.map((rangeOption) => (
               <button
@@ -355,7 +377,7 @@ const OverviewPage = () => {
         </div>
         <div className="growth-curve-layout">
           <div className="growth-chart-wrap">
-            <svg className="growth-chart" viewBox="0 0 900 300" role="img" aria-label="张三累计已点亮技能数量变化曲线">
+            <svg className="growth-chart" viewBox="0 0 900 300" role="img" aria-label={`${currentEmployee.name}历史累计点亮技能数量变化曲线`}>
               <defs>
                 <linearGradient id="growth-area" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0" stopColor="#6558e8" stopOpacity=".25" /><stop offset="1" stopColor="#6558e8" stopOpacity=".02" />
@@ -417,6 +439,7 @@ const OverviewPage = () => {
             </svg>
           </div>
           <aside className="growth-event-detail" aria-live="polite">
+            {selectedEvent ? <>
             <span className="growth-event-date">{selectedEvent.date} · 正式生效</span>
             <h4>{selectedEvent.title}</h4>
             <p>{selectedEvent.note}</p>
@@ -427,6 +450,7 @@ const OverviewPage = () => {
               <div><dt>审批人</dt><dd>{selectedEvent.approver}</dd></div>
             </dl>
             <button onClick={() => navigate('evidence')}>查看认证记录</button>
+            </> : <p>暂无历史成长记录</p>}
           </aside>
         </div>
       </section>

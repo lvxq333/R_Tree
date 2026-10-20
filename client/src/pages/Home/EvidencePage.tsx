@@ -1,4 +1,6 @@
-import { useMemo, useRef, useState } from 'react';
+import { growthApi } from '@/api';
+import type { SkillGrowthEvent } from '@shared/api.interface';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useCertifications } from './certification-context';
 import type { CertificationItem } from './certification-context';
 import EvidenceGalaxy from './EvidenceGalaxy';
@@ -6,13 +8,14 @@ import CertificationList from './CertificationList';
 import CertificationDetail from './CertificationDetail';
 import SelfApplicationDrawer from './SelfApplicationDrawer';
 
-const HISTORY_ROWS: { skill: string; meta: string; level: string; basis: string; approver: string; date: string; down?: boolean }[] = [
-  { skill: '代码质量', meta: '专业技能 / 工程质量', level: 'L1 → L2', basis: '项目成果 + 专家评审', approver: '陈老师', date: '2026-08-28' },
-  { skill: '跨团队协作', meta: '通用技能 / 协作影响', level: 'L2 → L3', basis: '季度绩效成果', approver: '李经理', date: '2026-08-11' },
-  { skill: '数据库性能调优', meta: '专业技能 / 数据工程', level: 'L3 → L2', basis: '18 个月无相关实践，人工复核', approver: '王经理 + 专家', date: '2026-07-22', down: true },
-];
-
 const EvidencePage = () => {
+  const [history, setHistory] = useState<SkillGrowthEvent[]>([]);
+  const [historyError, setHistoryError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    growthApi.getGrowthEvents('all').then(result => { if (active) setHistory(result.events); }).catch(() => { if (active) setHistoryError(true); });
+    return () => { active = false; };
+  }, []);
   const {
     certifications,
     error,
@@ -88,7 +91,7 @@ const EvidencePage = () => {
       <section className="lifecycle-notice" aria-label="技能等级复核说明">
         <span className="lifecycle-notice-icon">↻</span>
         <div><b>技能等级会定期复核</b><p>长期无相关工作或产出只会触发复核，不会自动降级。你可以补充近期成果、说明暂无实践机会，并查看最终判断依据。</p></div>
-        <button onClick={handleReviewShortcut}>查看 1 项待复核</button>
+        <button onClick={handleReviewShortcut}>查看 {counts.review} 项待复核</button>
       </section>
 
       <SelfApplicationDrawer open={selfApplicationOpen} skillPreset={selfSkillPreset} />
@@ -113,11 +116,12 @@ const EvidencePage = () => {
       <section className="panel certification-history">
         <div className="section-head"><div><h3>最近等级变更</h3><p>点亮、升级、维持与降级均保留完整记录</p></div><button className="ghost">查看全部记录</button></div>
         <div className="history-row history-head"><span>技能</span><span>等级变化</span><span>主要依据</span><span>审批人</span><span>生效时间</span></div>
-        {HISTORY_ROWS.map((row) => (
-          <div className="history-row" key={`${row.skill}-${row.date}`}>
-            <span><b>{row.skill}</b><small>{row.meta}</small></span>
-            <span className={row.down ? 'history-down' : undefined}>{row.level}</span>
-            <span>{row.basis}</span>
+        {historyError ? <p>等级变更记录加载失败，请刷新重试。</p> : !history.length && <p>暂无等级变更记录。</p>}
+        {history.map((row, index) => (
+          <div className="history-row" key={`${row.title}-${row.date}-${index}`}>
+            <span><b>{row.title}</b><small>{row.category}</small></span>
+            <span className={undefined}>{row.level}</span>
+            <span>{row.evidence}</span>
             <span>{row.approver}</span>
             <span>{row.date}</span>
           </div>

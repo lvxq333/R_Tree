@@ -1,3 +1,4 @@
+import { useAuth } from './auth-context';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { PageId, Role } from './types';
 
@@ -34,11 +35,13 @@ interface UIContextValue {
 const UIContext = createContext<UIContextValue | null>(null);
 
 export function UIProvider({ children }: { children: ReactNode }) {
+  const { user } = useAuth();
+  const initialPage: PageId = user.accessRole === 'manager' || !isManagerSurface(readInitialPage()) ? readInitialPage() : 'overview';
   const [role, setRoleState] = useState<Role>(() =>
-    isManagerSurface(readInitialPage()) ? 'manager' : 'employee',
+    isManagerSurface(initialPage) ? 'manager' : 'employee',
   );
-  const [page, setPage] = useState<PageId>(readInitialPage);
-  const [profileId, setProfileId] = useState<string>('zhou-chen');
+  const [page, setPage] = useState<PageId>(initialPage);
+  const [profileId, setProfileId] = useState<string>(user.employeeSlug);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const returnPageRef = useRef<PageId>('manager');
@@ -50,6 +53,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const navigate = useCallback((target: PageId) => {
+    if (isManagerSurface(target) && user.accessRole !== 'manager') target = 'overview';
     setPage(target);
     setRoleState(isManagerSurface(target) ? 'manager' : 'employee');
     try {
@@ -58,7 +62,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       /* preview may restrict history */
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [user.accessRole]);
 
   const setRole = useCallback((next: Role) => {
     setRoleState(next);
@@ -66,6 +70,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
   }, [navigate]);
 
   const openProfile = useCallback((id: string) => {
+    if (user.accessRole !== 'manager') return;
     setProfileId(id);
     setPage((current: PageId) => {
       if (current !== 'profile') returnPageRef.current = current;
@@ -78,7 +83,7 @@ export function UIProvider({ children }: { children: ReactNode }) {
       /* preview may restrict history */
     }
     window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  }, [user.accessRole]);
 
   useEffect(() => {
     const onHashChange = () => {

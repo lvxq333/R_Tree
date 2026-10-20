@@ -9,6 +9,6 @@ async function bootstrap() {
   app.useStaticAssets(join(process.cwd(), 'dist/client'));
   app.enableShutdownHooks();
   await app.listen(Number(process.env.SERVER_PORT || 3000), '127.0.0.1');
-  console.log('技能树本地演示：http://127.0.0.1:3000');
+  console.log(`技能树本地演示：http://127.0.0.1:${process.env.SERVER_PORT || 3000}`);
 }
 bootstrap().catch(error => { console.error(error); process.exit(1); });

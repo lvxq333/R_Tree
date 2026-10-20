@@ -1,10 +1,16 @@
 import type {
   EmployeeListItem,
   EmployeeProfile,
+  EmployeeWorkspaceResponse,
   SkillTreeResponse,
 } from '@shared/api.interface';
 import { axiosForBackend } from '@/lib/runtime';
 import { logger } from '@/lib/runtime';
+
+export async function getCurrentWorkspace(): Promise<EmployeeWorkspaceResponse> {
+  const res = await axiosForBackend.get<EmployeeWorkspaceResponse>('/api/employees/current/workspace');
+  return res.data;
+}
 
 export async function listEmployees(): Promise<EmployeeListItem[]> {
   try {

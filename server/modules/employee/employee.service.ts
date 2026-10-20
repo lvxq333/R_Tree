@@ -1,6 +1,7 @@
+import { currentEmployee } from '../auth/employee-context';
 import { Injectable, Inject } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
-import { asc } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import {
   employee,
   skill,
@@ -22,8 +23,8 @@ export class EmployeeService {
   ) {}
 
   async listEmployees(): Promise<EmployeeListItem[]> {
-    const employees = await this.db.select().from(employee);
-    const candidates = await this.db.select().from(talentCandidate);
+    const employees = await this.db.select().from(employee).where(currentEmployee().accessRole === 'manager' ? undefined : eq(employee.id, currentEmployee().employeeId));
+    const candidates = currentEmployee().accessRole === 'manager' ? await this.db.select().from(talentCandidate) : [];
 
     const fromEmployees: EmployeeListItem[] = employees.map((row) => ({
       id: row.slug,

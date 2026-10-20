@@ -1,3 +1,5 @@
+import { currentEmployee } from '../auth/employee-context';
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   Inject,
@@ -7,7 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import { approval, employeeSkill } from '@server/database/schema';
 import type {
   ApprovalItem,
@@ -17,12 +19,6 @@ import type {
   SelfApplicationInput,
 } from '@shared/api.interface';
 
-/** 演示员工（认证列表固定数据归属） */
-export const DEMO_EMPLOYEE_SLUG = 'zhang-san';
-
-const APPLICANT_NAME = '张三';
-const APPLICANT_AVATAR = '张';
-const APPLICANT_DEPARTMENT = '平台研发部 · T1-2';
 const APPLICATION_DUE = '09-19';
 
 export interface CertificationDecisionInput {
@@ -144,7 +140,7 @@ export class CertificationService {
     const rows = await this.db
       .select()
       .from(employeeSkill)
-      .where(eq(employeeSkill.employeeSlug, DEMO_EMPLOYEE_SLUG))
+      .where(and(eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug),sql`${employeeSkill.status} IS DISTINCT FROM 'withdrawn'`))
       .orderBy(asc(employeeSkill.sort));
     return rows.map((row: typeof employeeSkill.$inferSelect) => toCertificationItem(row));
   }
@@ -153,7 +149,7 @@ export class CertificationService {
     const rows = await this.db
       .select()
       .from(employeeSkill)
-      .where(eq(employeeSkill.slug, slug))
+      .where(and(eq(employeeSkill.slug, slug), eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug)))
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundException(`认证记录不存在：${slug}`);
@@ -169,7 +165,7 @@ export class CertificationService {
       throw new BadRequestException('level 必须为正整数');
     }
     const currentLevel: number = await this.resolveCurrentLevel(input.skill);
-    const slug = `self-${Date.now()}`;
+    const slug = `self-${randomUUID()}`;
     const baseExplanation =
       '你已主动提交点亮申请。系统只校验证明是否完整，最终等级由管理者或 HR 依据行为锚点确认。';
     const explanation = input.note ? `${baseExplanation}补充说明：${input.note}` : baseExplanation;
@@ -185,7 +181,7 @@ export class CertificationService {
       .insert(employeeSkill)
       .values({
         slug,
-        employeeSlug: DEMO_EMPLOYEE_SLUG,
+        employeeSlug: currentEmployee().employeeSlug,
         title: input.skill,
         category: '专业技能 / 员工选择',
         source: 'manual',
@@ -218,7 +214,7 @@ export class CertificationService {
     const rows = await this.db
       .select()
       .from(employeeSkill)
-      .where(eq(employeeSkill.slug, slug))
+      .where(and(eq(employeeSkill.slug, slug), eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug)))
       .limit(1);
     const certRow = rows[0];
     if (!certRow) throw new NotFoundException(`认证记录不存在：${slug}`);
@@ -230,7 +226,7 @@ export class CertificationService {
         .where(and(eq(approval.linkedSlug, slug), eq(approval.status, 'pending')));
       const removed = await this.db
         .delete(employeeSkill)
-        .where(eq(employeeSkill.slug, slug))
+        .where(and(eq(employeeSkill.slug, slug), eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug)))
         .returning({ id: employeeSkill.slug });
       if (removed.length === 0) throw new NotFoundException(`认证记录不存在：${slug}`);
       this.logger.log(`certification dismissed: ${JSON.stringify({ slug })}`);
@@ -287,21 +283,21 @@ export class CertificationService {
     return { certification: updated, approval: approvalItem };
   }
 
-  /** 取该员工同名技能的当前最高等级，无记录则为 1 */
+  /** 取该员工同名技能的当前最高等级，无记录则为 0 */
   private async resolveCurrentLevel(skillTitle: string): Promise<number> {
     const rows = await this.db
       .select({ currentLevel: employeeSkill.currentLevel })
       .from(employeeSkill)
       .where(
         and(
-          eq(employeeSkill.employeeSlug, DEMO_EMPLOYEE_SLUG),
+          eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug),
           eq(employeeSkill.title, skillTitle),
         ),
       );
     return rows.reduce(
       (max: number, row: { currentLevel: number | null }) =>
         Math.max(max, row.currentLevel ?? 0),
-      1,
+      0,
     );
   }
 
@@ -309,7 +305,7 @@ export class CertificationService {
     const rows = await this.db
       .select({ sort: employeeSkill.sort })
       .from(employeeSkill)
-      .where(eq(employeeSkill.employeeSlug, DEMO_EMPLOYEE_SLUG));
+      .where(eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug));
     return (
       rows.reduce(
         (min: number, row: { sort: number }) => Math.min(min, row.sort),
@@ -325,7 +321,7 @@ export class CertificationService {
     );
   }
 
-  /** 已有待审批单则复用，否则新建（applicant 张三） */
+  /** 已有待审批单则复用，否则新建（使用登录员工身份） */
   private async createApplicationApproval(
     certRow: typeof employeeSkill.$inferSelect,
   ): Promise<ApprovalItem> {
@@ -340,12 +336,12 @@ export class CertificationService {
     const inserted = await this.db
       .insert(approval)
       .values({
-        slug: `approval-${certRow.slug}-${Date.now()}`,
+        slug: `approval-${randomUUID()}`,
         linkedSlug: certRow.slug,
         kind: 'application',
-        applicant: APPLICANT_NAME,
-        avatar: APPLICANT_AVATAR,
-        department: APPLICANT_DEPARTMENT,
+        applicant: currentEmployee().name,
+        avatar: Array.from(currentEmployee().name)[0],
+        department: currentEmployee().org,
         title: certRow.title,
         currentLevel: certRow.currentLevel ?? 0,
         targetLevel: certRow.targetLevel ?? 0,
@@ -370,7 +366,7 @@ export class CertificationService {
     const updated = await this.db
       .update(employeeSkill)
       .set(patch)
-      .where(eq(employeeSkill.slug, slug))
+      .where(and(eq(employeeSkill.slug, slug), eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug)))
       .returning();
     const row = updated[0];
     if (!row) throw new NotFoundException(`认证记录不存在：${slug}`);

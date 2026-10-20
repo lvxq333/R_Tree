@@ -1,7 +1,9 @@
+import { currentEmployee } from '../auth/employee-context';
 import { Injectable, Inject } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import {
+  employeeSkill,
   careerNode,
   careerNodeSkill,
   careerSequence,
@@ -22,8 +24,6 @@ import type {
   SkillGrowthEvent,
 } from '@shared/api.interface';
 
-const GAPS_EMPLOYEE_SLUG = 'zhang-san';
-const EVENTS_EMPLOYEE_SLUG = 'zhang-san';
 const GAP_SOURCES: string[] = ['career', 'okr', 'current'];
 
 function toGapSource(value: string | null): GapSource {
@@ -55,6 +55,12 @@ export class GrowthService {
       .from(careerNodeSkill)
       .orderBy(asc(careerNodeSkill.sort));
     const skills = await this.db.select().from(skill);
+    const personalSkills = await this.db.select().from(employeeSkill).where(eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug));
+    const levels = new Map<string, number>();
+    for (const item of personalSkills) {
+      if (!['approved','review','review_submitted'].includes(item.status ?? '')) continue;
+      if (item.skillSlug) levels.set(item.skillSlug, item.currentLevel ?? 0);
+    }
 
     const skillNameBySlug = new Map<string, string>(
       skills.map((row: typeof skill.$inferSelect) => [row.slug, row.name]),
@@ -65,7 +71,7 @@ export class GrowthService {
       const name: string = skillNameBySlug.get(nodeSkill.skillSlug) ?? nodeSkill.skillSlug;
       const item: CareerNodeSkill = {
         name,
-        current: nodeSkill.currentLevel ?? 0,
+        current: levels.get(nodeSkill.skillSlug) ?? 0,
         target: nodeSkill.requiredLevel,
       };
       const list: CareerNodeSkill[] = skillsByNode.get(nodeSkill.nodeSlug) ?? [];
@@ -79,10 +85,10 @@ export class GrowthService {
         id: node.slug,
         code: node.code ?? '',
         title: node.title ?? '',
-        meta: node.meta ?? '',
-        state: node.state ?? '',
-        coverage: node.coverage ?? 0,
-        description: node.description ?? '',
+        meta: '岗位能力要求',
+        state: '岗位能力参考',
+        coverage: Math.round((skillsByNode.get(node.slug) ?? []).filter(item => item.current >= item.target).length / Math.max(1, (skillsByNode.get(node.slug) ?? []).length) * 100),
+        description: '根据当前员工的有效认证技能对照岗位要求。',
         skills: skillsByNode.get(node.slug) ?? [],
       };
       const list: CareerNode[] = nodesBySequence.get(node.sequenceSlug) ?? [];
@@ -106,7 +112,7 @@ export class GrowthService {
     const rows = await this.db
       .select()
       .from(skillEvent)
-      .where(eq(skillEvent.employeeSlug, EVENTS_EMPLOYEE_SLUG))
+      .where(eq(skillEvent.employeeSlug, currentEmployee().employeeSlug))
       .orderBy(asc(skillEvent.sort));
 
     const limited =
@@ -138,7 +144,7 @@ export class GrowthService {
       .from(skillGap)
       .where(
         and(
-          eq(skillGap.employeeSlug, GAPS_EMPLOYEE_SLUG),
+          eq(skillGap.employeeSlug, currentEmployee().employeeSlug),
           inArray(skillGap.source, GAP_SOURCES),
         ),
       )

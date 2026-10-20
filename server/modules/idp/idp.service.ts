@@ -1,3 +1,4 @@
+import { currentEmployee } from '../auth/employee-context';
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import {
@@ -21,7 +22,6 @@ import type {
   IdpResponse,
 } from '@shared/api.interface';
 
-const EMPLOYEE_SLUG = 'zhang-san';
 const GAP_SOURCES: string[] = ['career', 'okr', 'current'];
 const ACTION_KINDS: IdpActionKind[] = ['learn', 'practice', 'mentor', 'deliver'];
 
@@ -48,10 +48,10 @@ export class IdpService {
     const plans = await this.db
       .select()
       .from(idpPlan)
-      .where(eq(idpPlan.employeeSlug, EMPLOYEE_SLUG))
+      .where(eq(idpPlan.employeeSlug, currentEmployee().employeeSlug))
       .limit(1);
     const plan = plans[0];
-    if (!plan) throw new NotFoundException('未找到该员工的 IDP 计划');
+    if (!plan) return { positioning: { currentRole: currentEmployee().position, targetRole: '', horizon: '', readiness: 0, readinessNote: '尚未制定个人发展计划', strengths: [], weaknesses: [] }, gaps: [], phases: [], milestones: [], adjustRules: [], reviewCadence: '' };
 
     const [phaseRows, milestoneRows, ruleRows, gapRows] = await Promise.all([
       this.db
@@ -74,7 +74,7 @@ export class IdpService {
         .from(skillGap)
         .where(
           and(
-            eq(skillGap.employeeSlug, EMPLOYEE_SLUG),
+            eq(skillGap.employeeSlug, currentEmployee().employeeSlug),
             inArray(skillGap.source, GAP_SOURCES),
           ),
         )

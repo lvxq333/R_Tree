@@ -11,11 +11,14 @@ import { IdpModule } from './modules/idp/idp.module';
 import { TalentModule } from './modules/talent/talent.module';
 import { SuccessionModule } from './modules/succession/succession.module';
 import { TeamModule } from './modules/team/team.module';
+import { FactsModule } from './modules/facts/facts.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 @Module({
   imports: [
     // 平台 Module，提供平台能力
     LocalPlatformModule,
+    AuthModule,
     // ====== @route-section: business-modules START ======
     // Place all business modules here.Do NOT add fallback modules here.
     EmployeeModule,
@@ -25,6 +28,7 @@ import { TeamModule } from './modules/team/team.module';
     TalentModule,
     SuccessionModule,
     TeamModule,
+    FactsModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

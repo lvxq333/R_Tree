@@ -11,7 +11,8 @@ class LocalDemoGuard implements CanActivate {
     const host = request.headers.host?.split(':')[0];
     const origin = request.headers.origin;
     if (process.env.LOCAL_DEMO !== 'true' || !['localhost', '127.0.0.1'].includes(host)) throw new ForbiddenException('仅允许本机演示访问');
-    if (origin && !['http://localhost:5173','http://127.0.0.1:5173','http://localhost:3000','http://127.0.0.1:3000'].includes(origin)) throw new ForbiddenException('不允许的来源');
+    const allowedPorts = ['5173', String(Number(process.env.SERVER_PORT || 3000))];
+    if (origin && !allowedPorts.some(port => origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`)) throw new ForbiddenException('不允许的来源');
     return true;
   }
 }

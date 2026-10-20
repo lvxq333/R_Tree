@@ -78,6 +78,12 @@ export function CertificationProvider({ children }: { children: ReactNode }): JS
   }, []);
 
   useEffect(() => {
+    const update = () => { void Promise.all([refetchCertifications(),refetchApprovals()]).catch(()=>setError(LOAD_ERROR_MESSAGE)); };
+    window.addEventListener('validation:updated',update);
+    return ()=>window.removeEventListener('validation:updated',update);
+  },[refetchCertifications,refetchApprovals]);
+
+  useEffect(() => {
     let cancelled = false;
     const load = async (): Promise<void> => {
       setLoading(true);

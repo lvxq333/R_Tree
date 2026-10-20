@@ -1,6 +1,7 @@
 import type { JSX } from 'react';
 import type { CertificationEvidence, CertificationItem } from '@shared/api.interface';
 import { useCertifications } from './certification-context';
+import SkillAssessmentPanel from './SkillAssessmentPanel';
 
 function isReviewStatus(status: string): boolean {
   return status === 'review' || status === 'review_submitted';
@@ -75,7 +76,7 @@ const CertificationDetail = ({ item }: CertificationDetailProps) => {
           <div><dt>拟调整等级</dt><dd>L{item.targetLevel}</dd></div>
           <div><dt>复核截止</dt><dd>{item.deadline}</dd></div>
         </dl>
-      ) : (
+      ) : item.source==='ai_validation' ? <p>隔离验证候选建议，不提供正式认证分数。</p> : (
         <div className="confidence-row">
           <span>依据完整度</span>
           <i><span style={{ width: `${item.confidence}%` }} /></i>
@@ -95,6 +96,8 @@ const CertificationDetail = ({ item }: CertificationDetailProps) => {
         <h4>{isReview ? `当前 L${item.currentLevel} 行为锚点` : `L${item.targetLevel} 行为锚点`}</h4>
         <p>{item.anchor}</p>
       </section>
+      {!isReview && ['编程语言基础','自动化测试与质量门禁','容器与编排（K8s）','容器与编排','跨团队协作'].includes(item.title)
+        ? <SkillAssessmentPanel key={item.id} item={item}/> : null}
       <div className="detail-actions">{actions}</div>
     </aside>
   );

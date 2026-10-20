@@ -1,3 +1,5 @@
+import { currentEmployee } from '../auth/employee-context';
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   Inject,
@@ -7,9 +9,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
-import { asc, eq } from 'drizzle-orm';
+import { asc, eq, inArray } from 'drizzle-orm';
 import dayjs from 'dayjs';
-import { approval, employeeSkill } from '@server/database/schema';
+import { approval, employeeSkill, employee } from '@server/database/schema';
 import type {
   ApprovalAction,
   ApprovalItem,
@@ -17,7 +19,6 @@ import type {
   ManagerReviewInput,
 } from '@shared/api.interface';
 import {
-  DEMO_EMPLOYEE_SLUG,
   toApprovalItem,
   toCertificationItem,
   type CertificationMutationResult,
@@ -42,7 +43,10 @@ export class ApprovalService {
   ) {}
 
   async listApprovals(): Promise<ApprovalItem[]> {
-    const rows = await this.db.select().from(approval).orderBy(asc(approval.sort));
+    const ownSkills = this.db.select({ slug: employeeSkill.slug }).from(employeeSkill).where(eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug));
+    const rows = await this.db.select().from(approval)
+      .where(currentEmployee().accessRole === 'manager' ? undefined : inArray(approval.linkedSlug, ownSkills))
+      .orderBy(asc(approval.sort));
     return rows.map((row: typeof approval.$inferSelect) => toApprovalItem(row));
   }
 
@@ -53,19 +57,22 @@ export class ApprovalService {
     if (typeof input.currentLevel !== 'number' || typeof input.targetLevel !== 'number') {
       throw new BadRequestException('currentLevel / targetLevel 必须为数字');
     }
+    const people = await this.db.select().from(employee).where(eq(employee.name, input.personName)).limit(2);
+    if (people.length !== 1) throw new BadRequestException('员工不存在或姓名不唯一，请核对员工信息');
+    const targetEmployee = people[0];
     const detail = `${input.reason}。管理者说明：${input.evidence}`;
-    const certSlug = `manager-${Date.now()}`;
+    const certSlug = `manager-${randomUUID()}`;
     const certSort = await this.nextSort(
       this.db
         .select({ sort: employeeSkill.sort })
         .from(employeeSkill)
-        .where(eq(employeeSkill.employeeSlug, DEMO_EMPLOYEE_SLUG)),
+        .where(eq(employeeSkill.employeeSlug, targetEmployee.slug)),
     );
     const certInserted = await this.db
       .insert(employeeSkill)
       .values({
         slug: certSlug,
-        employeeSlug: DEMO_EMPLOYEE_SLUG,
+        employeeSlug: targetEmployee.slug,
         title: input.skill,
         category: '专业技能 / 管理者评审',
         source: 'performance',

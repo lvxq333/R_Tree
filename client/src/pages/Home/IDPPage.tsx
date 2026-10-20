@@ -45,6 +45,8 @@ const IDPPage = () => {
     );
   }
 
+  if (!idp.positioning.targetRole && !idp.phases.length) return <section className="page active" id="idp"><section className="panel empty-panel"><h2>尚未制定个人发展计划</h2><p>工作台已建立，后续可根据岗位目标和真实工作记录制定计划。</p><button className="primary" onClick={() => navigate('overview')}>返回成长概览</button></section></section>;
+
   return (
     <section className="page active" id="idp">
       <section className="panel idp-hero">
@@ -61,14 +63,14 @@ const IDPPage = () => {
         </div>
         <div className="idp-readiness">
           <strong>{idp.positioning.readiness}%</strong>
-          <span>T3 就绪度</span>
-          <em>综合 18 项已点亮技能与 6 项在途 Gap 评估</em>
+          <span>目标岗位就绪度</span>
+          <em>依据当前员工发展计划展示</em>
         </div>
       </section>
 
       <div className="idp-grid">
         <section className="panel idp-status">
-          <div className="section-head"><div><h3>现状盘点</h3><p>个人情况摘要 · 生成于 2026 Q3</p></div></div>
+          <div className="section-head"><div><h3>现状盘点</h3><p>个人情况摘要</p></div></div>
           <div className="idp-status-cols">
             <div>
               <h4>优势 · 继续保持</h4>
@@ -83,7 +85,7 @@ const IDPPage = () => {
 
         <section className="panel idp-gaps">
           <div className="section-head">
-            <div><h3>Gap 输入</h3><p>本 IDP 的全部行动均来自以下 6 项 Gap</p></div>
+            <div><h3>Gap 输入</h3><p>本 IDP 包含 {idp.gaps.length} 项 Gap</p></div>
             <button className="ghost" onClick={() => navigate('overview')}>查看 Gap 池 →</button>
           </div>
           <ul className="idp-gap-list">

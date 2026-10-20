@@ -1,0 +1,15 @@
+.validation-banner { padding:9px 32px; background:#fff4d6; color:#78520b; border-bottom:1px solid #f1d38b; font-size:13px; }
+.validation-backdrop { position:fixed; inset:0; background:#10182866; z-index:60; display:flex; justify-content:flex-end; }
+.validation-drawer { width:min(660px,100vw); padding:24px; background:#f8fafc; overflow-y:auto; box-shadow:-8px 0 40px #10182822; }
+.validation-drawer header { display:flex; gap:16px; justify-content:space-between; align-items:flex-start; }
+.validation-drawer h2 { font-size:22px; margin:0; }
+.validation-drawer h3 { font-size:17px; margin:0 0 10px; }
+.validation-drawer h4 { margin:0; }
+.validation-drawer p { font-size:14px; color:#475467; }
+.validation-drawer section { margin:18px 0; padding:18px; background:white; border:1px solid #e4e7ec; border-radius:12px; }
+.validation-notice { padding:14px 0; border-top:1px solid #e4e7ec; }
+.validation-notice blockquote { padding:10px 12px; margin:10px 0; border-left:3px solid #6675e5; background:#f3f5ff; font-size:13px; }
+.validation-drawer small { display:block; overflow-wrap:anywhere; color:#667085; font-size:12px; }
+.validation-drawer details { padding:10px 0; border-top:1px solid #e4e7ec; }
+.validation-drawer summary { font-size:14px; cursor:pointer; }
+.validation-drawer pre { white-space:pre-wrap; overflow-wrap:anywhere; font-size:12px; padding:12px; background:#f4f6fa; border-radius:8px; }
