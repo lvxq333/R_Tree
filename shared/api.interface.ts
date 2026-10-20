@@ -331,6 +331,8 @@ export interface CareerNodeSkill {
   name: string;
   current: number;
   target: number;
+  /** current 的来源：cert 有效认证；title-covered 职称覆盖；title-baseline 职称基线（下一层新技能的入门理解） */
+  source?: 'cert' | 'title-covered' | 'title-baseline';
 }
 
 export interface CareerNode {
@@ -357,6 +359,8 @@ export interface CareerSequenceView {
 
 export interface CareerResponse {
   sequences: CareerSequenceView[];
+  /** 按部门/岗位推断的偏好技术序列，用于概览默认选中 */
+  preferredTrack: string | null;
 }
 
 export interface SkillGrowthEvent {
@@ -374,6 +378,12 @@ export interface GrowthEventsResponse {
   events: SkillGrowthEvent[];
 }
 
+/** Gap 条目下的一条子能力要求（技能在该等级下的可评估子能力） */
+export interface GapCompetency {
+  name: string;
+  level: number;
+}
+
 export interface GapPoolItem {
   source: GapSource;
   sourceLabel: string;
@@ -383,6 +393,10 @@ export interface GapPoolItem {
   target: number;
   levelRange: string;
   priority: 'p0' | 'p1' | 'p2';
+  /** 距目标的等级差 */
+  gapLevels: number;
+  /** 该技能在目标等级下的子能力要求明细 */
+  competencies: GapCompetency[];
 }
 
 export interface GapListResponse {
@@ -404,6 +418,25 @@ export interface GapAction {
 
 export interface GapActionsResponse {
   items: GapAction[];
+}
+
+/* ========== 能力结构分布（雷达图） ========== */
+export interface AbilityAxis {
+  name: string;
+  /** 有效等级：认证 / 职称覆盖 / 职称基线取大 */
+  current: number;
+  /** 目标层要求等级 */
+  target: number;
+  fromBaseline?: boolean;
+}
+
+export interface AbilityStructureResponse {
+  axes: AbilityAxis[];
+  /** 已持有职称层代码；无职称为 null */
+  heldLevelCode: string | null;
+  /** 下一目标层代码 */
+  nextLevelCode: string | null;
+  summary: string;
 }
 
 /* ========== IDP ========== */
@@ -575,6 +608,10 @@ export interface JudgingRequirement {
   gapLevels: number;
   met: boolean;
   competencySlugs: string[];
+  /** 当前等级来自职称覆盖（持有层及以下要求视为已满足） */
+  fromTitle?: boolean;
+  /** 当前等级来自职称基线（下一层新出现技能按入门理解 L1 计） */
+  fromBaseline?: boolean;
 }
 
 export interface JudgingLevelView {

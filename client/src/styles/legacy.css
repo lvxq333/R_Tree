@@ -223,6 +223,7 @@ body {
 .chart-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
 .legend-purple { background: #8b67f6; }
 .legend-blue { background: #5790ef; }
+.radar-footnote { margin: 6px 0 0; color: #8f959e; font-size:var(--text-caption); text-align: center; }
 
 .donut {
   width: 152px;
@@ -399,6 +400,11 @@ body {
 .gap-source.current { background: #fff0dc; color: #8a5b08; }
 .gap-copy h4 { margin: 0 0 5px; font-size:var(--text-ui); line-height: 19px; }
 .gap-copy p { margin: 0; color: #5b6472; font-size:var(--text-body); line-height: 20px; font-weight: 500; }
+/* Gap 条目的子能力要求 chips：宽度不够时自动换行 */
+.gap-comps { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.gap-comps span { padding: 2px 8px; border-radius: 6px; background: #f2f4f8; color: #5b6472; font-size:var(--text-caption); font-weight: 600; white-space: nowrap; }
+.gap-comps span em { font-style: normal; color: #101828; margin-right: 4px; }
+.gap-pool-list article { align-items: center; min-height: 62px; padding: 9px 0; }
 
 /* 针对 Gap 的行动建议卡片 */
 .gap-action-list { display: flex; flex-wrap: wrap; gap: 12px; }

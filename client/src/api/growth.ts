@@ -1,4 +1,5 @@
 import type {
+  AbilityStructureResponse,
   CareerResponse,
   GapActionsResponse,
   GapListResponse,
@@ -59,6 +60,19 @@ export async function getGapActions(): Promise<GapActionsResponse> {
     return res.data;
   } catch (error) {
     logger.error('获取行动建议失败', error);
+    throw error;
+  }
+}
+
+export async function getAbilityStructure(): Promise<AbilityStructureResponse> {
+  try {
+    const res = await axiosForBackend.request<AbilityStructureResponse>({
+      url: '/api/growth/ability-structure',
+      method: 'GET',
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('获取能力结构失败', error);
     throw error;
   }
 }

@@ -23,6 +23,8 @@ export const DISMISS_COOLDOWN_DAYS = 7;
 export const ACTIVE_APPLICATION_STATUSES = ['draft', 'ai-evaluating', 'pending-exam', 'in-exam', 'pending-approval'];
 /** 差 1 项即视为「接近可申请」，作为证据类候选推送 */
 export const PREPARING_GAP_THRESHOLD = 1;
+/** 技术序列：职称在这些序列之间平级互认 */
+export const TECH_TRACKS: string[] = ['software', 'platform', 'ai'];
 
 type LevelRow = {
   id: string; track_slug: string; track_name: string; level_order: number; level_code: string; level_name: string;
@@ -45,12 +47,21 @@ type JudgingContext = {
   requirements: RequirementRow[];
   requirementsByLevel: Map<string, RequirementRow[]>;
   skillLevels: Map<string, number>;
+  /** 有效等级 = max(认证, 职称覆盖, 职称基线)，供判定与概览共用同一口径 */
+  effective: EffectiveLevels;
   competencyBySkill: Map<string, string[]>;
   ownedTitles: TitleRow[];
   ownedMaxOrder: number;
   applications: ApplicationRow[];
   openAppealApplications: Set<string>;
   cooldowns: Map<string, Date>;
+};
+
+/** 有效等级视图：levels 全量；covered 职称覆盖的技能；baseline 职称基线技能 */
+export type EffectiveLevels = {
+  levels: Map<string, number>;
+  covered: Set<string>;
+  baseline: Set<string>;
 };
 
 const daysLater = (from: Date | string, days: number) => new Date(new Date(from).getTime() + days * 86_400_000);
@@ -223,11 +234,19 @@ export class JudgingService {
     const cooldowns = new Map<string, Date>();
     for (const row of cooldownRows) cooldowns.set(row.dismissed_key, new Date(row.cooldown_until));
 
+    const effective = this.computeEffectiveLevels({
+      levels,
+      requirementsByLevel,
+      skillLevels: new Map(skillLevels.map(row => [row.skill_slug, row.level])),
+      ownedTitles,
+    });
+
     return {
       levels,
       requirements,
       requirementsByLevel,
       skillLevels: new Map(skillLevels.map(row => [row.skill_slug, row.level])),
+      effective,
       competencyBySkill,
       ownedTitles,
       ownedMaxOrder: ownedTitles.reduce((max, row) => Math.max(max, row.level_order), 0),
@@ -235,6 +254,69 @@ export class JudgingService {
       openAppealApplications: new Set(appealRows.map(row => row.application_slug)),
       cooldowns,
     };
+  }
+
+  /**
+   * 职称带来的有效能力：
+   * 1. 覆盖：持有层及以下（同序列）要求过的技能，按该层要求等级视为已达（高等级自动覆盖低等级）。
+   * 2. 互认：技术序列之间职称平级互认，互认序列的同层要求同样视为已满足。
+   * 3. 基线：紧邻下一层新出现的技能（此前层从未要求、也无认证），按「入门理解 L1」计——
+   *    达到 Tn 的员工对下一层技能通常已有初步接触，显示 L0 不符合真实场景。
+   * 基线不改变 met（要求等级 ≥ 2），只让 Gap 展示与行动建议更贴近真实。
+   */
+  private computeEffectiveLevels(input: {
+    levels: LevelRow[];
+    requirementsByLevel: Map<string, RequirementRow[]>;
+    skillLevels: Map<string, number>;
+    ownedTitles: TitleRow[];
+  }): EffectiveLevels {
+    const levels = new Map(input.skillLevels);
+    const covered = new Set<string>();
+    const baseline = new Set<string>();
+
+    // 每条序列的有效持有层 = 自身职称与（技术序列）互认层级的最大值。
+    const heldByTrack = new Map<string, number>();
+    for (const title of input.ownedTitles) {
+      const held = heldByTrack.get(title.track_slug) ?? 0;
+      if (title.level_order > held) heldByTrack.set(title.track_slug, title.level_order);
+    }
+    const techMax = Math.max(0, ...TECH_TRACKS.map(track => heldByTrack.get(track) ?? 0));
+    if (techMax > 0) {
+      for (const track of TECH_TRACKS) {
+        const held = heldByTrack.get(track) ?? 0;
+        if (techMax > held) heldByTrack.set(track, techMax);
+      }
+    }
+
+    for (const [trackSlug, heldOrder] of heldByTrack) {
+      if (heldOrder <= 0) continue;
+      for (const level of input.levels) {
+        if (level.track_slug !== trackSlug) continue;
+        const reqs = input.requirementsByLevel.get(level.id) ?? [];
+        if (level.level_order <= heldOrder) {
+          for (const req of reqs) {
+            covered.add(req.skill_slug);
+            const current = levels.get(req.skill_slug) ?? 0;
+            if (req.required_level > current) levels.set(req.skill_slug, req.required_level);
+          }
+        } else if (level.level_order === heldOrder + 1) {
+          for (const req of reqs) {
+            if (covered.has(req.skill_slug)) continue;
+            if ((levels.get(req.skill_slug) ?? 0) < 1) {
+              levels.set(req.skill_slug, 1);
+              baseline.add(req.skill_slug);
+            }
+          }
+        }
+      }
+    }
+    return { levels, covered, baseline };
+  }
+
+  /** 当前员工的有效能力等级（含职称覆盖与职称基线），供成长概览等模块复用同一口径。 */
+  async effectiveLevelsForCurrentEmployee(): Promise<EffectiveLevels> {
+    const ctx = await this.load(currentEmployee().employeeSlug);
+    return ctx.effective;
   }
 
   private currentTitle(ctx: JudgingContext) {
@@ -271,7 +353,7 @@ export class JudgingService {
    */
   private buildLevel(level: LevelRow, ctx: JudgingContext): JudgingLevelView {
     const requirements: JudgingRequirement[] = (ctx.requirementsByLevel.get(level.id) ?? []).map(row => {
-      const currentLevel = ctx.skillLevels.get(row.skill_slug) ?? 0;
+      const currentLevel = ctx.effective.levels.get(row.skill_slug) ?? 0;
       return {
         skillSlug: row.skill_slug,
         skillName: row.skill_name ?? row.skill_slug,
@@ -280,6 +362,8 @@ export class JudgingService {
         gapLevels: Math.max(0, row.required_level - currentLevel),
         met: currentLevel >= row.required_level,
         competencySlugs: ctx.competencyBySkill.get(row.skill_slug) ?? [],
+        fromTitle: ctx.effective.covered.has(row.skill_slug),
+        fromBaseline: ctx.effective.baseline.has(row.skill_slug),
       };
     });
     const met = requirements.filter(item => item.met).length;

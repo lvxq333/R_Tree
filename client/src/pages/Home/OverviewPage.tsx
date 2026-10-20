@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { growthApi } from '@/api';
 import { logger } from '@/lib/runtime';
 import type {
+  AbilityStructureResponse,
+  AbilityAxis,
   CareerNode,
   CareerNodeSkill,
   CareerSequenceView,
@@ -45,6 +47,84 @@ const GROWTH_RANGES: { key: GrowthRangeKey; label: string }[] = [
   { key: 'all', label: '全部' },
 ];
 
+const GAP_SOURCE_TEXT: Record<string, string> = { career: '职业', okr: 'OKR', current: '岗位', profile: '画像' };
+
+/* ========== 能力结构雷达图几何参数 ========== */
+const RADAR_CENTER_X = 170;
+const RADAR_CENTER_Y = 122;
+const RADAR_RADIUS = 84;
+const RADAR_LEVELS = 5;
+
+const radarPoint = (index: number, total: number, value: number): { x: number; y: number } => {
+  const angle = -Math.PI / 2 + (index * 2 * Math.PI) / total;
+  const radius = (RADAR_RADIUS * value) / RADAR_LEVELS;
+  return { x: RADAR_CENTER_X + radius * Math.cos(angle), y: RADAR_CENTER_Y + radius * Math.sin(angle) };
+};
+
+const radarPolygon = (axes: AbilityAxis[], key: 'current' | 'target'): string =>
+  axes
+    .map((axis, index) => {
+      const point = radarPoint(index, axes.length, key === 'current' ? axis.current : axis.target);
+      return `${point.x},${point.y}`;
+    })
+    .join(' ');
+
+const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
+  if (axes.length < 3) {
+    return <div className="empty-panel" style={{ padding: '55px 20px' }}><p style={{ color: '#667085' }}>尚未生成能力结构评估</p></div>;
+  }
+  const labelPoint = (index: number): { x: number; y: number; anchor: 'start' | 'middle' | 'end' } => {
+    const angle = -Math.PI / 2 + (index * 2 * Math.PI) / axes.length;
+    const x = RADAR_CENTER_X + (RADAR_RADIUS + 18) * Math.cos(angle);
+    const y = RADAR_CENTER_Y + (RADAR_RADIUS + 16) * Math.sin(angle);
+    const cos = Math.cos(angle);
+    const anchor = Math.abs(cos) < 0.3 ? 'middle' : cos > 0 ? 'start' : 'end';
+    return { x, y: y + 4, anchor };
+  };
+  return (
+    <svg className="radar-chart" viewBox="0 0 340 244" role="img" aria-label="能力结构雷达图：当前能力与目标要求对照">
+      {[1, 2, 3, 4, 5].map((level) => (
+        <polygon
+          key={level}
+          points={axes.map((_, index) => {
+            const point = radarPoint(index, axes.length, level);
+            return `${point.x},${point.y}`;
+          }).join(' ')}
+          fill={level === RADAR_LEVELS ? '#fbfaff' : 'none'}
+          stroke="#e4e7f2"
+          strokeWidth={1}
+        />
+      ))}
+      {axes.map((axis, index) => {
+        const point = radarPoint(index, axes.length, RADAR_LEVELS);
+        return <line key={axis.name} x1={RADAR_CENTER_X} y1={RADAR_CENTER_Y} x2={point.x} y2={point.y} stroke="#e4e7f2" strokeWidth={1} />;
+      })}
+      <polygon points={radarPolygon(axes, 'target')} fill="rgba(87, 144, 239, .08)" stroke="#5790ef" strokeWidth={1.5} strokeDasharray="5 4" />
+      <polygon points={radarPolygon(axes, 'current')} fill="rgba(101, 88, 232, .22)" stroke="#6558e8" strokeWidth={2} strokeLinejoin="round" />
+      {axes.map((axis, index) => {
+        const point = radarPoint(index, axes.length, axis.current);
+        return <circle key={`${axis.name}-dot`} cx={point.x} cy={point.y} r={3} fill="#6558e8" />;
+      })}
+      {axes.map((axis, index) => {
+        const label = labelPoint(index);
+        return (
+          <text
+            key={`${axis.name}-label`}
+            x={label.x}
+            y={label.y}
+            textAnchor={label.anchor}
+            fontSize={11}
+            fill="#5b6472"
+          >
+            {axis.name}
+            {axis.fromBaseline ? '*' : ''}
+          </text>
+        );
+      })}
+    </svg>
+  );
+};
+
 const OverviewPage = () => {
   const { navigate, showToast } = useUI();
   const { workspace, error: workspaceError } = useEmployeeWorkspace();
@@ -52,6 +132,7 @@ const OverviewPage = () => {
   const [growthEvents, setGrowthEvents] = useState<SkillGrowthEvent[] | null>(null);
   const [gapItems, setGapItems] = useState<GapPoolItem[] | null>(null);
   const [gapActions, setGapActions] = useState<GapAction[]>([]);
+  const [abilityStructure, setAbilityStructure] = useState<AbilityStructureResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [channel, setChannel] = useState<ChannelKey>('tech');
   const [sequence, setSequence] = useState<SequenceKey>('software');
@@ -84,11 +165,21 @@ const OverviewPage = () => {
       .then((res) => {
         if (!cancelled) {
           setSequences(res.sequences);
-          // 默认聚焦偏好序列的「推荐下一站」节点
-          const nextNode = res.sequences
-            .flatMap(sequence => sequence.nodes)
-            .find(node => node.isNext);
-          if (nextNode) setSelectedNodeId(nextNode.id);
+          // 默认聚焦偏好序列的「推荐下一站」节点；偏好序列缺失时取第一条有推荐下一站的序列
+          const preferredEntry = res.preferredTrack
+            ? res.sequences.flatMap(sequence => sequence.nodes.map(node => ({ sequenceKey: sequence.key, node })))
+              .find(item => item.sequenceKey === res.preferredTrack && item.node.isNext)
+            : undefined;
+          const entry = preferredEntry
+            ?? res.sequences
+              .flatMap(sequence => sequence.nodes.map(node => ({ sequenceKey: sequence.key, node })))
+              .find(item => item.node.isNext);
+          if (entry) {
+            if (['software', 'platform', 'ai'].includes(entry.sequenceKey)) {
+              setSequence(entry.sequenceKey as SequenceKey);
+            }
+            setSelectedNodeId(entry.node.id);
+          }
         }
       })
       .catch((error: unknown) => {
@@ -113,6 +204,16 @@ const OverviewPage = () => {
       })
       .catch((error: unknown) => {
         if (!cancelled) logger.error('获取行动建议失败', error);
+      });
+    growthApi.getAbilityStructure()
+      .then((res: AbilityStructureResponse) => {
+        if (!cancelled) setAbilityStructure(res);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          logger.error('获取能力结构失败', error);
+          setAbilityStructure({ axes: [], heldLevelCode: null, nextLevelCode: null, summary: '' });
+        }
       });
     return () => { cancelled = true; };
   }, []);
@@ -139,7 +240,7 @@ const OverviewPage = () => {
       </section>
     );
   }
-  if (!sequences || !gapItems || !growthEvents || !workspace) {
+  if (!sequences || !gapItems || !growthEvents || !workspace || !abilityStructure) {
     return (
       <section className="page active" id="overview">
         <div className="skill-model-note"><span>成长数据加载中…</span></div>
@@ -219,14 +320,17 @@ const OverviewPage = () => {
   const handleChannelChange = (next: ChannelKey): void => {
     setChannel(next);
     const nodes = nodesFor(next, sequence);
-    if (nodes[1]) setSelectedNodeId(nodes[1].id);
+    // 切换通道/序列后聚焦该序列的「推荐下一站」，无未达成层时聚焦最后一站。
+    const nextNode = nodes.find((node) => node.isNext) ?? nodes[nodes.length - 1];
+    if (nextNode) setSelectedNodeId(nextNode.id);
   };
 
   const handleSequenceSelect = (key: SequenceKey): void => {
     setSequence(key);
     setSequenceMenuOpen(false);
     const nodes = nodesFor('tech', key);
-    if (nodes[1]) setSelectedNodeId(nodes[1].id);
+    const nextNode = nodes.find((node) => node.isNext) ?? nodes[nodes.length - 1];
+    if (nextNode) setSelectedNodeId(nextNode.id);
   };
 
   const handleGrowthPointKeyDown = (event: React.KeyboardEvent<SVGGElement>, date: string): void => {
@@ -260,10 +364,19 @@ const OverviewPage = () => {
       <div className="profile-insights">
         <section className="panel radar-panel">
           <div className="section-head compact">
-            <div><h3>能力结构分布</h3><p>依据当前员工的能力评估结果展示</p></div>
+            <div><h3>能力结构分布</h3><p>{abilityStructure.summary || '依据当前员工的能力评估结果展示'}</p></div>
             <button className="radar-skill-entry" onClick={() => navigate('evidence')}>进入技能池 <span><b>{readyCount}</b> 待确认</span></button>
           </div>
-          <div className="empty-panel" style={{ padding: '55px 20px' }}><p style={{ color: '#667085' }}>尚未生成能力结构评估</p></div>
+          <RadarChart axes={abilityStructure.axes} />
+          {abilityStructure.axes.length >= 3 && (
+            <div className="chart-legend">
+              <span><i className="legend-purple"></i>当前能力{abilityStructure.heldLevelCode ? `（${abilityStructure.heldLevelCode} 起）` : ''}</span>
+              <span><i className="legend-blue"></i>目标要求{abilityStructure.nextLevelCode ? `（${abilityStructure.nextLevelCode}）` : ''}</span>
+            </div>
+          )}
+          {abilityStructure.axes.some(axis => axis.fromBaseline) && (
+            <p className="radar-footnote">* 该技能当前等级按职称基线（入门理解 L1）计</p>
+          )}
         </section>
         <section className="panel maturity-panel">
           <div className="section-head compact"><div><h3>能力成熟度分布</h3><p>{metrics.certifiedSkillCount} 项有效认证技能</p></div></div>
@@ -332,9 +445,14 @@ const OverviewPage = () => {
             {selectedNode.skills.map((skill: CareerNodeSkill) => {
               const met = skill.current >= skill.target;
               const category = COMMON_SKILL_NAMES.has(skill.name) ? '通用技能' : '专业技能';
+              const sourceText = skill.source === 'title-covered'
+                ? ' · 职称覆盖'
+                : skill.source === 'title-baseline'
+                  ? ' · 职称基线'
+                  : '';
               return (
                 <div key={skill.name} className={`node-skill ${met ? 'met' : ''}`}>
-                  <div><b>{skill.name}</b><small>{category} · 当前 L{skill.current} · 要求 L{skill.target}</small></div>
+                  <div><b>{skill.name}</b><small>{category} · 当前 L{skill.current}{sourceText} · 要求 L{skill.target}</small></div>
                   <span>{met ? '已满足' : `Gap ${skill.target - skill.current} 级`}</span>
                 </div>
               );
@@ -357,9 +475,19 @@ const OverviewPage = () => {
           <div className="gap-pool-list">
             {gapItems.length === 0 && <p>暂无个人 Gap 记录。</p>}
             {gapItems.map((item: GapPoolItem) => (
-              <article key={item.title} data-gap-source={item.source} className={gapFilter !== 'all' && item.source !== gapFilter ? 'is-hidden' : ''}>
-                <div className={`gap-source ${item.source}`}>{item.sourceLabel}</div>
-                <div className="gap-copy"><h4>{item.title}</h4><p>{item.description}</p></div>
+              <article key={`${item.source}-${item.title}`} data-gap-source={item.source} className={gapFilter !== 'all' && item.source !== gapFilter ? 'is-hidden' : ''}>
+                <div className={`gap-source ${item.source}`}>{GAP_SOURCE_TEXT[item.source] ?? item.sourceLabel}</div>
+                <div className="gap-copy">
+                  <h4>{item.title}</h4>
+                  <p>{item.description}</p>
+                  {item.competencies.length > 0 && (
+                    <div className="gap-comps">
+                      {item.competencies.map((comp) => (
+                        <span key={`${item.title}-${comp.name}`}><em>{comp.name}</em>L{comp.level}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
                 <div className="five-levels">
                   {[0, 1, 2, 3, 4].map((level) => {
                     const levelClass = level < item.filled ? 'filled' : level === item.target - 1 ? 'target' : '';
@@ -399,7 +527,7 @@ const OverviewPage = () => {
 
       <section className="panel growth-curve-panel" aria-labelledby="growth-curve-title">
         <div className="growth-curve-head">
-          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>历史轨迹按原记录保留；当前有效认证以技能明细为准</p></div>
+          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>从入职第一次点亮开始保留全部轨迹；当前有效认证以技能明细为准</p></div>
           <div className="growth-curve-summary"><span>当前有效 <b>{metrics.certifiedSkillCount}</b> 项</span><span>历史累计 <b>{lastEvent?.total ?? 0}</b> 项</span></div>
           <div className="growth-range" role="tablist" aria-label="选择成长轨迹时间范围">
             {GROWTH_RANGES.map((rangeOption) => (
