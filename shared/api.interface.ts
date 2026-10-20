@@ -425,7 +425,7 @@ export interface AbilityAxis {
   name: string;
   /** 有效等级：认证 / 职称覆盖 / 职称基线取大 */
   current: number;
-  /** 目标层要求等级 */
+  /** 团队平均等级（同部门员工在该技能上的平均有效认证等级，1 位小数） */
   target: number;
   fromBaseline?: boolean;
 }
@@ -434,8 +434,8 @@ export interface AbilityStructureResponse {
   axes: AbilityAxis[];
   /** 已持有职称层代码；无职称为 null */
   heldLevelCode: string | null;
-  /** 下一目标层代码 */
-  nextLevelCode: string | null;
+  /** 团队口径描述（如「研发技术中心-Java组 · 3 人」）；无团队数据为 null */
+  teamLabel: string | null;
   summary: string;
 }
 

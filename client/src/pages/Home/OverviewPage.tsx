@@ -212,7 +212,7 @@ const OverviewPage = () => {
       .catch((error: unknown) => {
         if (!cancelled) {
           logger.error('获取能力结构失败', error);
-          setAbilityStructure({ axes: [], heldLevelCode: null, nextLevelCode: null, summary: '' });
+          setAbilityStructure({ axes: [], heldLevelCode: null, teamLabel: null, summary: '' });
         }
       });
     return () => { cancelled = true; };
@@ -359,8 +359,6 @@ const OverviewPage = () => {
         <article title="按近三个自然月的明确等级提升事件统计，首次点亮和降级不计为升级"><i className="metric-icon rose">↗</i><div><span>成长速度（近三月升级次数）</span><strong>{metrics.recentUpgradeCount}</strong></div></article>
       </div>
 
-      {workspace.workFactCount === 0 && <section className="panel" style={{ padding: '20px 24px', marginBottom: 18 }}><h3>工作记录从这里开始</h3><p>事实中心已登记你的基本信息，目前有 0 条工作事实。项目、绩效和工作成果接入后，会显示在你的工作台中。</p></section>}
-
       <div className="profile-insights">
         <section className="panel radar-panel">
           <div className="section-head compact">
@@ -370,8 +368,8 @@ const OverviewPage = () => {
           <RadarChart axes={abilityStructure.axes} />
           {abilityStructure.axes.length >= 3 && (
             <div className="chart-legend">
-              <span><i className="legend-purple"></i>当前能力{abilityStructure.heldLevelCode ? `（${abilityStructure.heldLevelCode} 起）` : ''}</span>
-              <span><i className="legend-blue"></i>目标要求{abilityStructure.nextLevelCode ? `（${abilityStructure.nextLevelCode}）` : ''}</span>
+              <span><i className="legend-purple"></i>我的水平{abilityStructure.heldLevelCode ? `（${abilityStructure.heldLevelCode} 起）` : ''}</span>
+              <span><i className="legend-blue"></i>团队平均{abilityStructure.teamLabel ? `（${abilityStructure.teamLabel}）` : ''}</span>
             </div>
           )}
           {abilityStructure.axes.some(axis => axis.fromBaseline) && (

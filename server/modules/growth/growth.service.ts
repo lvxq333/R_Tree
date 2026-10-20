@@ -6,6 +6,7 @@ import {
   careerNode,
   careerNodeSkill,
   careerSequence,
+  employee,
   skill,
   skillCategory,
   skillGap,
@@ -20,6 +21,7 @@ import {
 } from '@server/database/mvp-schema';
 import { JudgingService } from '../judging/judging.service';
 import type {
+  AbilityAxis,
   AbilityStructureResponse,
   CareerNode,
   CareerNodeSkill,
@@ -419,12 +421,15 @@ export class GrowthService {
     pending.sort((a, b) => a.at - b.at);
     const events: SkillGrowthEvent[] = pending.map(item => ({ ...item.event, date: item.date }));
 
-    const limited =
-      range === '6m'
-        ? events.slice(-6)
-        : range === '12m'
-          ? events.slice(-9)
-          : events;
+    // 时间范围按真实日期过滤：近 N 个月以今天为基准回溯，全部返回完整轨迹。
+    const now = Date.now();
+    const cutoff =
+      range === '6m' ? now - 6 * 30.44 * 24 * 3600 * 1000
+        : range === '12m' ? now - 12 * 30.44 * 24 * 3600 * 1000
+          : 0;
+    const limited = cutoff > 0
+      ? pending.filter(item => item.at >= cutoff).map(item => ({ ...item.event, date: item.date }))
+      : events;
 
     return { events: limited };
   }
@@ -575,13 +580,14 @@ export class GrowthService {
 
   /**
    * 能力结构分布（雷达图）：以已持有层 + 下一目标层的技能为轴，
-   * 当前值用有效等级（认证/职称覆盖/职称基线），对照目标层要求。
+   * 我的水平用有效等级（认证/职称覆盖/职称基线），对照同部门团队平均。
    */
   async getAbilityStructure(): Promise<AbilityStructureResponse> {
+    const employeeSlug = currentEmployee().employeeSlug;
     const overview = await this.judging.getOverview();
     const track = overview.tracks.find(item => item.slug === overview.preferredTrack) ?? overview.tracks[0];
     if (!track || track.levels.length === 0) {
-      return { axes: [], heldLevelCode: null, nextLevelCode: null, summary: '暂无职称序列数据' };
+      return { axes: [], heldLevelCode: null, teamLabel: null, summary: '暂无职称序列数据' };
     }
     const heldLevel = Math.max(0, ...track.levels.filter(level => level.state === 'certified').map(level => level.levelOrder));
     const heldView = track.levels.find(level => level.levelOrder === heldLevel);
@@ -591,20 +597,57 @@ export class GrowthService {
       .flatMap(view => view.requirements.map(item => ({
         name: item.skillName,
         current: item.currentLevel,
-        target: item.requiredLevel,
+        target: 0,
+        skillSlug: item.skillSlug,
         fromBaseline: item.fromBaseline,
       })));
+
+    // 团队口径：同部门（org）员工；部门只有本人时回退全体员工作为参照。
+    const orgRows = await this.db
+      .select({ slug: employee.slug, org: employee.org })
+      .from(employee);
+    const orgBySlug = new Map(orgRows.map(row => [row.slug, row.org]));
+    const myOrg = orgBySlug.get(employeeSlug) ?? '';
+    let members = orgRows.filter(row => row.org && row.org === myOrg).map(row => row.slug);
+    let teamLabel: string | null = members.length >= 2 ? `${myOrg} · ${members.length} 人` : null;
+    if (members.length < 2) {
+      members = orgRows.map(row => row.slug);
+      teamLabel = members.length >= 2 ? `全体员工 · ${members.length} 人` : null;
+    }
+
+    const certRows = members.length > 0
+      ? await this.db
+        .select({ employeeSlug: mvpEmployeeSkill.employeeSlug, skillSlug: mvpEmployeeSkill.skillSlug, level: mvpEmployeeSkill.level })
+        .from(mvpEmployeeSkill)
+        .where(and(eq(mvpEmployeeSkill.status, 'active'), inArray(mvpEmployeeSkill.employeeSlug, members)))
+      : [];
+    const bestByMemberSkill = new Map<string, number>();
+    for (const row of certRows) {
+      const key = `${row.employeeSlug}:${row.skillSlug}`;
+      bestByMemberSkill.set(key, Math.max(bestByMemberSkill.get(key) ?? 0, row.level));
+    }
+    const resultAxes: AbilityAxis[] = axes.map(axis => {
+      const values = members.map(member => bestByMemberSkill.get(`${member}:${axis.skillSlug}`) ?? 0);
+      const avg = values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+      return {
+        name: axis.name,
+        current: axis.current,
+        target: Math.round(avg * 10) / 10,
+        fromBaseline: axis.fromBaseline,
+      };
+    });
+
     const summary = heldView
-      ? nextView
-        ? `已持有 ${heldView.levelName}，下一目标 ${nextView.levelName}`
-        : `已持有 ${heldView.levelName}，已达序列顶层`
+      ? teamLabel
+        ? `已持有 ${heldView.levelName}，与${teamLabel}的平均能力对比`
+        : `已持有 ${heldView.levelName}`
       : nextView
         ? `下一目标 ${nextView.levelName}`
         : '暂无能力要求';
     return {
-      axes,
+      axes: resultAxes,
       heldLevelCode: heldView?.levelCode ?? null,
-      nextLevelCode: nextView?.levelCode ?? null,
+      teamLabel,
       summary,
     };
   }

@@ -40,6 +40,32 @@ try {
       insertedSkills += rows.length;
     }
 
+    // 成长轨迹演示：给张伟补跨序列认证。分两类——
+    // 1. 平台/数据与 AI 序列 T1 共通基础技能（软开 T1 同款，已被职称点亮，仅用于换序列职级核算）；
+    // 2. 平台 T2 / AI T2 的序列专属技能（软开职称未覆盖，在轨迹上是真实的新增点亮，曲线持续增长）。
+    // 效果：软件 T3（职称）、平台工程 T2、数据与 AI T1；轨迹 2020.03 点亮 12 项后继续增长到 17 项。
+    const TRAJECTORY_DEMO_SKILLS = [
+      { employee: 'zhang-wei', skill: 'k8s', level: 2, certifiedAt: '2022-11-20' },
+      { employee: 'zhang-wei', skill: 'k8s', level: 3, certifiedAt: '2023-05-14' },
+      { employee: 'zhang-wei', skill: 'programming', level: 2, certifiedAt: '2023-08-15' },
+      { employee: 'zhang-wei', skill: 'cloud-platform-dev', level: 3, certifiedAt: '2023-12-08' },
+      { employee: 'zhang-wei', skill: 'code-quality', level: 2, certifiedAt: '2024-04-10' },
+      { employee: 'zhang-wei', skill: 'observability-building', level: 3, certifiedAt: '2024-09-21' },
+      { employee: 'zhang-wei', skill: 'data-processing', level: 2, certifiedAt: '2025-03-05' },
+      { employee: 'zhang-wei', skill: 'auto-testing', level: 2, certifiedAt: '2025-09-01' },
+      { employee: 'zhang-wei', skill: 'ai-integration', level: 2, certifiedAt: '2026-01-10' },
+      { employee: 'zhang-wei', skill: 'requirements', level: 2, certifiedAt: '2026-08-20' },
+    ];
+    for (const item of TRAJECTORY_DEMO_SKILLS) {
+      const slug = `${item.employee}-${item.skill}-l${item.level}`;
+      const rows = await tx`
+        INSERT INTO mvp_employee_skill(slug, employee_slug, skill_slug, level, certified_at, source, status)
+        VALUES(${slug}, ${item.employee}, ${item.skill}, ${item.level}, ${item.certifiedAt}::timestamptz, 'initial-seed', 'active')
+        ON CONFLICT (employee_slug, skill_slug, level) DO NOTHING
+        RETURNING id`;
+      insertedSkills += rows.length;
+    }
+
     // 初始职称：按岗位职级映射（专家→T4、高级→T3、中级→T2、其余→T1），
     // 序列按部门/岗位关键字推断（与 JudgingService.preferredTrack 同口径）。
     // 员工的现有岗位职级视为已授予职称，判断层据此把低层级显示为 certified、
