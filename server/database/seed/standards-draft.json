@@ -1,31 +1,17 @@
 {
   "meta": {
-    "name": "MVP 标准草稿 v0.1",
+    "name": "MVP 标准草稿 v0.2（三序列）",
     "date": "2026-10-20",
     "standardVersion": "v2026-q4",
     "source": "assumed",
-    "note": "13 条序列 × 4 层职称的通用草稿。除 java / data-analysis / sales 外均为 AI 草稿口径，标记「MVP 假定标准」，管理端可改。层级名称与技能矩阵需业务复核后固化。",
-    "levelRule": "职称层与技能五级是两套刻度：T1 以 L2 为主、T2 以 L3 为主、T3 以 L4 为主、T4 以 L5 为主；null 表示该层不要求此技能。"
+    "scope": "仅技术类三序列：software（软件开发）、platform（平台工程）、ai（数据与 AI）。销售、客户成功、产品、项目管理等业务序列移出 MVP。",
+    "note": "序列 slug、层级代码与层级名称沿用库内既有 career_sequence / career_node 定义，不另造。技能要求按层写「该层新增或提高的要求」，与既有 career_node_skill 语义一致：未列出的技能沿用较低层要求，Gap 只算本层新增/提高项。全部标记「MVP 假定标准」，管理端可改。",
+    "levelRule": "职称层与技能五级是两套刻度，不强制一一对应：T1 以 L2 为主、T2 以 L3 为主、T3 以 L4 为主、T4 以 L5 为主。",
+    "requirementRule": "source=existing 的行直接来自库内 career_node_skill（48 条）；source=added 的行是本次补齐（9 条），渲染时标 \"+\"。"
   },
 
-  "skillCategoriesNew": [
-    { "slug": "commerce", "name": "商务与客户成功", "kind": "professional" }
-  ],
-
-  "skillsNew": [
-    { "slug": "frontend-eng", "name": "前端工程化", "category": "coding-eng" },
-    { "slug": "frontend-arch", "name": "前端架构", "category": "coding-eng" },
-    { "slug": "python-eng", "name": "Python 工程化", "category": "coding-eng" },
-    { "slug": "sales-discovery", "name": "客户开拓", "category": "commerce" },
-    { "slug": "sales-negotiation", "name": "商务谈判", "category": "commerce" },
-    { "slug": "key-account", "name": "大客户经营", "category": "commerce" },
-    { "slug": "sales-pipeline", "name": "销售漏斗管理", "category": "commerce" },
-    { "slug": "cs-onboarding", "name": "客户上手与成功计划", "category": "commerce" },
-    { "slug": "cs-value", "name": "价值交付与复盘", "category": "commerce" },
-    { "slug": "cs-renewal", "name": "续约与增购", "category": "commerce" },
-    { "slug": "product-design", "name": "产品设计", "category": "business" },
-    { "slug": "user-research", "name": "用户研究", "category": "business" }
-  ],
+  "skillCategoriesNew": [],
+  "skillsNew": [],
 
   "evidencePatterns": {
     "L1": [{ "type": "note", "minCount": 1, "description": "学习笔记或培训记录 1 份" }],
@@ -60,61 +46,23 @@
       { "slug": "risk-identify", "code": "GEN-RISK", "name": "风险识别", "description": "提前识别风险并给出应对" },
       { "slug": "coach-others", "code": "GEN-COACH", "name": "指导他人", "description": "通过评审、带教提升他人能力" },
       { "slug": "system-build", "code": "GEN-SYSTEM", "name": "体系建设", "description": "建立规范、流程或平台形成长期能力" },
-      { "slug": "cross-team-drive", "code": "GEN-CROSS", "name": "跨团队推动", "description": "在跨团队范围形成共识并落地" },
-      { "slug": "commercial-close", "code": "GEN-CLOSE", "name": "商务成交", "description": "推动商机进入签约与回款" },
-      { "slug": "customer-value", "code": "GEN-CVALUE", "name": "客户价值", "description": "把客户目标转成可验证的业务结果" }
+      { "slug": "cross-team-drive", "code": "GEN-CROSS", "name": "跨团队推动", "description": "在跨团队范围形成共识并落地" }
     ],
     "byTrack": {
-      "java": [
-        { "slug": "java-modeling", "code": "JAVA-MODEL", "name": "领域建模", "description": "把业务规则收敛为清晰的领域模型与边界" },
-        { "slug": "java-runtime", "code": "JAVA-RUN", "name": "运行时治理", "description": "JVM、并发与资源使用的调优与治理" }
+      "software": [
+        { "slug": "sw-modeling", "code": "SW-MODEL", "name": "领域建模", "description": "把业务规则收敛为清晰的模型、边界与演进路径" },
+        { "slug": "sw-runtime", "code": "SW-RUN", "name": "运行时与性能", "description": "内存、并发、资源使用的度量与调优" },
+        { "slug": "sw-maintain", "code": "SW-KEEP", "name": "可维护性", "description": "让代码与设计在长期迭代中保持低成本" }
       ],
-      "frontend": [
-        { "slug": "fe-interaction", "code": "FE-UX", "name": "交互实现", "description": "把设计稿与交互意图准确还原并处理边界态" },
-        { "slug": "fe-performance", "code": "FE-PERF", "name": "前端性能", "description": "加载、渲染与交互性能的度量与优化" }
+      "platform": [
+        { "slug": "pf-slo", "code": "PF-SLO", "name": "可靠性目标", "description": "以 SLO 定义可靠性目标并据此管理容量与成本" },
+        { "slug": "pf-incident", "code": "PF-IR", "name": "故障应急", "description": "故障定位、止损、复盘与改进闭环" },
+        { "slug": "pf-product", "code": "PF-PROD", "name": "平台产品化", "description": "把内部能力做成可自助使用的产品" }
       ],
-      "python": [
-        { "slug": "py-dataflow", "code": "PY-DATA", "name": "数据流处理", "description": "用脚本与管道处理结构化/非结构化数据" },
-        { "slug": "py-automation", "code": "PY-AUTO", "name": "自动化编排", "description": "把重复工作转成可维护的自动化流程" }
-      ],
-      "qa": [
-        { "slug": "qa-strategy", "code": "QA-STRAT", "name": "测试策略", "description": "按风险分层设计测试范围与投入" },
-        { "slug": "qa-automation", "code": "QA-AUTO", "name": "自动化体系", "description": "建设可维护的自动化与质量门禁" }
-      ],
-      "sre": [
-        { "slug": "sre-slo", "code": "SRE-SLO", "name": "SLO 与容量", "description": "以 SLO 定义可靠性目标并管理容量" },
-        { "slug": "sre-incident", "code": "SRE-IR", "name": "故障应急", "description": "故障定位、止损、复盘与改进闭环" }
-      ],
-      "algorithm": [
-        { "slug": "algo-model", "code": "ALGO-MODEL", "name": "模型方案", "description": "从数据与指标出发选择并训练模型方案" },
-        { "slug": "algo-eval", "code": "ALGO-EVAL", "name": "离线与在线评估", "description": "设计评估口径并解释模型效果差异" }
-      ],
-      "data-analysis": [
-        { "slug": "da-metric", "code": "DA-METRIC", "name": "指标体系", "description": "定义指标口径并保证可解释、可复用" },
-        { "slug": "da-insight", "code": "DA-INSIGHT", "name": "分析洞察", "description": "从数据中得出结论并推动决策" }
-      ],
-      "data-eng": [
-        { "slug": "de-pipeline", "code": "DE-PIPE", "name": "数据管道", "description": "设计与维护稳定可回溯的数据链路" },
-        { "slug": "de-model", "code": "DE-MODEL", "name": "数据建模", "description": "分层建模并控制口径与冗余" }
-      ],
-      "data-gov": [
-        { "slug": "dg-standard", "code": "DG-STD", "name": "数据标准", "description": "制定并落地数据标准与责任边界" },
-        { "slug": "dg-quality", "code": "DG-QUALITY", "name": "质量度量", "description": "建立质量规则、监控与整改闭环" }
-      ],
-      "sales": [
-        { "slug": "sales-funnel", "code": "SALES-FUNNEL", "name": "商机推进", "description": "按阶段推进商机并提升转化" }
-      ],
-      "product": [
-        { "slug": "pd-discovery", "code": "PD-DISC", "name": "需求发现", "description": "从用户与业务中发现值得做的问题" },
-        { "slug": "pd-prioritize", "code": "PD-PRIO", "name": "优先级取舍", "description": "在资源约束下决定做什么与不做什么" }
-      ],
-      "project-mgmt": [
-        { "slug": "pm-plan", "code": "PM-PLAN", "name": "计划与里程碑", "description": "拆解目标、识别关键路径并守住节点" },
-        { "slug": "pm-stakeholder", "code": "PM-STAKE", "name": "干系人管理", "description": "识别关键干系人并管理预期" }
-      ],
-      "customer-success": [
-        { "slug": "cs-adoption", "code": "CS-ADOPT", "name": "客户采用", "description": "推动客户真正用起来并形成习惯" },
-        { "slug": "cs-health", "code": "CS-HEALTH", "name": "客户健康度", "description": "以数据判断流失风险并提前干预" }
+      "ai": [
+        { "slug": "ai-model", "code": "AI-MODEL", "name": "模型方案", "description": "从数据与指标出发选择、训练并迭代模型方案" },
+        { "slug": "ai-eval", "code": "AI-EVAL", "name": "离线与在线评估", "description": "设计评估口径并解释离线与线上效果差异" },
+        { "slug": "ai-loop", "code": "AI-LOOP", "name": "数据闭环", "description": "从线上问题反推数据采集、标注与训练迭代" }
       ]
     }
   },
@@ -128,7 +76,7 @@
     "cloud-native": ["impl-delivery", "risk-identify", "system-build"],
     "platform-eng": ["solution-design", "system-build", "cross-team-drive"],
     "data-ai": ["solution-design", "quality-gate", "knowledge-share"],
-    "commerce": ["commercial-close", "customer-value", "collab-deliver"],
+    "ai-app": ["solution-design", "quality-gate", "cross-team-drive"],
     "business": ["req-clarify", "solution-design", "collab-deliver"],
     "org-mgmt": ["system-build", "coach-others", "cross-team-drive"],
     "collaboration": ["collab-deliver", "cross-team-drive", "knowledge-share"],
@@ -137,280 +85,161 @@
     "rd-efficiency": ["impl-delivery", "system-build", "knowledge-share"]
   },
 
+  "domainMapping": {
+    "java": "software",
+    "frontend": "software",
+    "python": "software",
+    "testing": "software",
+    "devops": "platform",
+    "data-analysis": "ai",
+    "data-engineering": "ai",
+    "data-governance": "ai"
+  },
+  "domainUnmapped": ["product", "sales"],
+
   "tracks": [
     {
-      "slug": "java",
-      "name": "Java 工程师",
+      "slug": "software",
+      "name": "软件开发序列",
       "category": "研发技术",
-      "pathKind": "single",
       "source": "refined",
       "levels": [
-        { "order": 1, "code": "T1", "name": "初级 Java 工程师" },
-        { "order": 2, "code": "T2", "name": "中级 Java 工程师" },
-        { "order": 3, "code": "T3", "name": "高级 Java 工程师" },
-        { "order": 4, "code": "T4", "name": "资深 Java 工程师" }
-      ],
-      "requirements": [
-        { "skill": "java-go-eng", "levels": [2, 3, 4, 5] },
-        { "skill": "programming", "levels": [2, 3, 3, 4] },
-        { "skill": "sys-design", "levels": [null, 2, 3, 5] },
-        { "skill": "code-quality", "levels": [2, 3, 4, 4] },
-        { "skill": "testing", "levels": [1, 2, 3, 4] },
-        { "skill": "domain-arch", "levels": [null, 1, 3, 5] }
+        {
+          "order": 1, "code": "T1", "name": "初级软件开发工程师",
+          "requirements": [
+            { "skill": "programming", "level": 2, "source": "existing" },
+            { "skill": "code-quality", "level": 2, "source": "existing" },
+            { "skill": "auto-testing", "level": 2, "source": "existing" },
+            { "skill": "requirements", "level": 2, "source": "existing" },
+            { "skill": "task-delivery", "level": 2, "source": "added" }
+          ]
+        },
+        {
+          "order": 2, "code": "T2", "name": "中级软件开发工程师",
+          "requirements": [
+            { "skill": "java-go-eng", "level": 3, "source": "existing" },
+            { "skill": "sys-design-split", "level": 3, "source": "existing" },
+            { "skill": "engineering-quality", "level": 3, "source": "existing" },
+            { "skill": "collaboration", "level": 3, "source": "existing" },
+            { "skill": "code-quality", "level": 3, "source": "added" }
+          ]
+        },
+        {
+          "order": 3, "code": "T3", "name": "高级软件开发工程师",
+          "requirements": [
+            { "skill": "distributed-sys", "level": 4, "source": "existing" },
+            { "skill": "perf-capacity", "level": 4, "source": "existing" },
+            { "skill": "proposal-decision", "level": 4, "source": "existing" },
+            { "skill": "tech-influence", "level": 3, "source": "existing" },
+            { "skill": "java-go-eng", "level": 4, "source": "added" }
+          ]
+        },
+        {
+          "order": 4, "code": "T4", "name": "资深 / 专家工程师",
+          "requirements": [
+            { "skill": "domain-arch", "level": 5, "source": "existing" },
+            { "skill": "tech-strategy", "level": 4, "source": "existing" },
+            { "skill": "org-governance", "level": 4, "source": "existing" },
+            { "skill": "talent-dev", "level": 4, "source": "existing" },
+            { "skill": "java-go-eng", "level": 5, "source": "added" }
+          ]
+        }
       ]
     },
     {
-      "slug": "frontend",
-      "name": "前端工程师",
+      "slug": "platform",
+      "name": "平台工程序列",
       "category": "研发技术",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "初级前端工程师" },
-        { "order": 2, "code": "T2", "name": "中级前端工程师" },
-        { "order": 3, "code": "T3", "name": "高级前端工程师" },
-        { "order": 4, "code": "T4", "name": "资深前端工程师" }
-      ],
-      "requirements": [
-        { "skill": "frontend-eng", "levels": [2, 3, 4, 5] },
-        { "skill": "frontend-arch", "levels": [null, 2, 4, 5] },
-        { "skill": "programming", "levels": [2, 3, 3, 4] },
-        { "skill": "sys-design", "levels": [null, 2, 3, 4] },
-        { "skill": "code-quality", "levels": [2, 3, 3, 4] }
-      ]
-    },
-    {
-      "slug": "python",
-      "name": "Python 工程师",
-      "category": "研发技术",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "初级 Python 工程师" },
-        { "order": 2, "code": "T2", "name": "中级 Python 工程师" },
-        { "order": 3, "code": "T3", "name": "高级 Python 工程师" },
-        { "order": 4, "code": "T4", "name": "资深 Python 工程师" }
-      ],
-      "requirements": [
-        { "skill": "python-eng", "levels": [2, 3, 4, 5] },
-        { "skill": "programming", "levels": [2, 3, 3, 4] },
-        { "skill": "data-processing", "levels": [1, 2, 3, 4] },
-        { "skill": "automation-dev", "levels": [null, 2, 3, 4] },
-        { "skill": "code-quality", "levels": [2, 2, 3, 4] }
-      ]
-    },
-    {
-      "slug": "qa",
-      "name": "测试与质量工程师",
-      "category": "研发技术",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "初级测试工程师" },
-        { "order": 2, "code": "T2", "name": "中级测试工程师" },
-        { "order": 3, "code": "T3", "name": "高级测试工程师" },
-        { "order": 4, "code": "T4", "name": "质量专家" }
-      ],
-      "requirements": [
-        { "skill": "testing", "levels": [2, 3, 4, 5] },
-        { "skill": "quality-awareness", "levels": [2, 3, 4, 4] },
-        { "skill": "code-quality", "levels": [2, 3, 3, 4] },
-        { "skill": "auto-testing", "levels": [null, 2, 4, 5] },
-        { "skill": "engineering-quality", "levels": [null, 1, 3, 4] }
-      ]
-    },
-    {
-      "slug": "sre",
-      "name": "运维与可靠性工程师",
-      "category": "研发技术",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "初级运维工程师" },
-        { "order": 2, "code": "T2", "name": "中级运维工程师" },
-        { "order": 3, "code": "T3", "name": "高级可靠性工程师" },
-        { "order": 4, "code": "T4", "name": "可靠性专家" }
-      ],
-      "requirements": [
-        { "skill": "stability-gov", "levels": [1, 2, 4, 5] },
-        { "skill": "observability", "levels": [2, 3, 4, 5] },
-        { "skill": "incident-response", "levels": [1, 2, 3, 4] },
-        { "skill": "k8s", "levels": [2, 3, 4, 5] },
-        { "skill": "capacity-gov", "levels": [null, 2, 3, 4] },
-        { "skill": "slo-design", "levels": [null, 1, 3, 5] }
-      ]
-    },
-    {
-      "slug": "algorithm",
-      "name": "算法工程师",
-      "category": "研发技术",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "初级算法工程师" },
-        { "order": 2, "code": "T2", "name": "中级算法工程师" },
-        { "order": 3, "code": "T3", "name": "高级算法工程师" },
-        { "order": 4, "code": "T4", "name": "算法专家" }
-      ],
-      "requirements": [
-        { "skill": "machine-learning", "levels": [2, 3, 4, 5] },
-        { "skill": "model-eng", "levels": [1, 2, 4, 5] },
-        { "skill": "model-eval", "levels": [null, 2, 3, 4] },
-        { "skill": "distributed-training", "levels": [null, 1, 3, 5] },
-        { "skill": "data-processing", "levels": [2, 2, 3, 4] }
-      ]
-    },
-    {
-      "slug": "data-analysis",
-      "name": "数据分析师",
-      "category": "数据",
-      "pathKind": "single",
       "source": "refined",
       "levels": [
-        { "order": 1, "code": "T1", "name": "初级数据分析师" },
-        { "order": 2, "code": "T2", "name": "数据分析师" },
-        { "order": 3, "code": "T3", "name": "高级数据分析师" },
-        { "order": 4, "code": "T4", "name": "数据分析专家" }
-      ],
-      "requirements": [
-        { "skill": "data-analysis", "levels": [2, 3, 4, 5] },
-        { "skill": "data-processing", "levels": [2, 3, 3, 4] },
-        { "skill": "requirements", "levels": [1, 2, 3, 4] },
-        { "skill": "business-exploration", "levels": [null, 2, 3, 4] },
-        { "skill": "communication", "levels": [1, 2, 3, 4] }
+        {
+          "order": 1, "code": "T1", "name": "初级软件开发工程师",
+          "requirements": [
+            { "skill": "programming", "level": 2, "source": "existing" },
+            { "skill": "code-quality", "level": 2, "source": "existing" },
+            { "skill": "auto-testing", "level": 2, "source": "existing" },
+            { "skill": "requirements", "level": 2, "source": "existing" },
+            { "skill": "task-delivery", "level": 2, "source": "added" }
+          ]
+        },
+        {
+          "order": 2, "code": "T2", "name": "平台开发工程师",
+          "requirements": [
+            { "skill": "cloud-platform-dev", "level": 3, "source": "existing" },
+            { "skill": "k8s", "level": 3, "source": "existing" },
+            { "skill": "observability-building", "level": 3, "source": "existing" },
+            { "skill": "collaboration", "level": 3, "source": "existing" },
+            { "skill": "infra-as-code", "level": 2, "source": "added" }
+          ]
+        },
+        {
+          "order": 3, "code": "T3", "name": "高级平台工程师",
+          "requirements": [
+            { "skill": "platform-product", "level": 4, "source": "existing" },
+            { "skill": "stability-gov", "level": 4, "source": "existing" },
+            { "skill": "cost-capacity", "level": 4, "source": "existing" },
+            { "skill": "tech-influence", "level": 3, "source": "existing" },
+            { "skill": "k8s", "level": 4, "source": "added" }
+          ]
+        },
+        {
+          "order": 4, "code": "T4", "name": "平台架构专家",
+          "requirements": [
+            { "skill": "infra-arch", "level": 5, "source": "existing" },
+            { "skill": "platform-tech-strategy", "level": 4, "source": "existing" },
+            { "skill": "org-governance", "level": 4, "source": "existing" },
+            { "skill": "talent-dev", "level": 4, "source": "existing" },
+            { "skill": "k8s", "level": 5, "source": "added" }
+          ]
+        }
       ]
     },
     {
-      "slug": "data-eng",
-      "name": "数据工程师",
+      "slug": "ai",
+      "name": "数据与 AI 序列",
       "category": "数据",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "初级数据工程师" },
-        { "order": 2, "code": "T2", "name": "数据工程师" },
-        { "order": 3, "code": "T3", "name": "高级数据工程师" },
-        { "order": 4, "code": "T4", "name": "数据架构专家" }
-      ],
-      "requirements": [
-        { "skill": "data-processing", "levels": [2, 3, 4, 5] },
-        { "skill": "data-loop", "levels": [null, 2, 3, 4] },
-        { "skill": "k8s", "levels": [null, 2, 3, 4] },
-        { "skill": "distributed-sys", "levels": [null, 1, 3, 5] },
-        { "skill": "data-quality-gov", "levels": [null, 1, 3, 4] }
-      ]
-    },
-    {
-      "slug": "data-gov",
-      "name": "数据治理工程师",
-      "category": "数据",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "初级数据治理工程师" },
-        { "order": 2, "code": "T2", "name": "数据治理工程师" },
-        { "order": 3, "code": "T3", "name": "高级数据治理工程师" },
-        { "order": 4, "code": "T4", "name": "数据治理专家" }
-      ],
-      "requirements": [
-        { "skill": "data-quality-gov", "levels": [2, 3, 4, 5] },
-        { "skill": "data-processing", "levels": [2, 2, 3, 4] },
-        { "skill": "risk-mgmt", "levels": [null, 2, 3, 4] },
-        { "skill": "security-gov", "levels": [null, 1, 3, 4] },
-        { "skill": "org-governance", "levels": [null, null, 2, 4] }
-      ]
-    },
-    {
-      "slug": "sales",
-      "name": "销售",
-      "category": "业务与管理",
-      "pathKind": "dual",
       "source": "refined",
       "levels": [
-        { "order": 1, "code": "P1", "name": "销售代表", "pathLabel": "专业" },
-        { "order": 2, "code": "P2", "name": "客户经理", "pathLabel": "专业" },
-        { "order": 3, "code": "P3", "name": "高级客户经理", "pathLabel": "专业" },
-        { "order": 4, "code": "P4", "name": "销售专家", "pathLabel": "专业" },
-        { "order": 1, "code": "M1", "name": "销售主管", "pathLabel": "管理" },
-        { "order": 2, "code": "M2", "name": "销售经理", "pathLabel": "管理" },
-        { "order": 3, "code": "M3", "name": "销售总监", "pathLabel": "管理" },
-        { "order": 4, "code": "M4", "name": "销售负责人", "pathLabel": "管理" }
-      ],
-      "requirementsByPath": {
-        "专业": [
-          { "skill": "sales-discovery", "levels": [2, 3, 4, 5] },
-          { "skill": "sales-negotiation", "levels": [1, 2, 4, 5] },
-          { "skill": "key-account", "levels": [null, 2, 4, 5] },
-          { "skill": "sales-pipeline", "levels": [2, 3, 4, 4] },
-          { "skill": "business-planning", "levels": [null, 1, 2, 3] }
-        ],
-        "管理": [
-          { "skill": "sales-pipeline", "levels": [2, 3, 4, 5] },
-          { "skill": "key-account", "levels": [2, 3, 4, 5] },
-          { "skill": "talent-dev", "levels": [null, 2, 3, 4] },
-          { "skill": "resource-allocation", "levels": [null, 1, 3, 4] },
-          { "skill": "business-planning", "levels": [null, 1, 3, 5] }
-        ]
-      }
-    },
-    {
-      "slug": "product",
-      "name": "产品经理",
-      "category": "业务与管理",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "产品助理" },
-        { "order": 2, "code": "T2", "name": "产品经理" },
-        { "order": 3, "code": "T3", "name": "高级产品经理" },
-        { "order": 4, "code": "T4", "name": "产品专家" }
-      ],
-      "requirements": [
-        { "skill": "requirements", "levels": [2, 3, 4, 5] },
-        { "skill": "product-design", "levels": [2, 3, 4, 5] },
-        { "skill": "user-research", "levels": [1, 2, 3, 4] },
-        { "skill": "business-planning", "levels": [null, 2, 3, 4] },
-        { "skill": "project-planning", "levels": [null, 1, 3, 4] }
-      ]
-    },
-    {
-      "slug": "project-mgmt",
-      "name": "项目管理",
-      "category": "业务与管理",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "项目助理" },
-        { "order": 2, "code": "T2", "name": "项目经理" },
-        { "order": 3, "code": "T3", "name": "高级项目经理" },
-        { "order": 4, "code": "T4", "name": "项目管理专家" }
-      ],
-      "requirements": [
-        { "skill": "project-planning", "levels": [2, 3, 4, 5] },
-        { "skill": "risk-mgmt", "levels": [1, 2, 3, 5] },
-        { "skill": "resource-allocation", "levels": [null, 2, 3, 4] },
-        { "skill": "cross-team-synergy", "levels": [1, 2, 3, 4] },
-        { "skill": "task-delivery", "levels": [2, 3, 3, 4] }
-      ]
-    },
-    {
-      "slug": "customer-success",
-      "name": "客户成功",
-      "category": "业务与管理",
-      "pathKind": "single",
-      "source": "assumed",
-      "levels": [
-        { "order": 1, "code": "T1", "name": "客户成功专员" },
-        { "order": 2, "code": "T2", "name": "客户成功经理" },
-        { "order": 3, "code": "T3", "name": "高级客户成功经理" },
-        { "order": 4, "code": "T4", "name": "客户成功专家" }
-      ],
-      "requirements": [
-        { "skill": "cs-onboarding", "levels": [2, 3, 4, 4] },
-        { "skill": "cs-value", "levels": [1, 2, 4, 5] },
-        { "skill": "cs-renewal", "levels": [null, 2, 3, 4] },
-        { "skill": "communication", "levels": [1, 2, 3, 4] },
-        { "skill": "business-exploration", "levels": [null, 1, 3, 4] }
+        {
+          "order": 1, "code": "T1", "name": "初级软件开发工程师",
+          "requirements": [
+            { "skill": "programming", "level": 2, "source": "existing" },
+            { "skill": "code-quality", "level": 2, "source": "existing" },
+            { "skill": "auto-testing", "level": 2, "source": "existing" },
+            { "skill": "requirements", "level": 2, "source": "existing" },
+            { "skill": "task-delivery", "level": 2, "source": "added" }
+          ]
+        },
+        {
+          "order": 2, "code": "T2", "name": "AI 应用开发工程师",
+          "requirements": [
+            { "skill": "ai-integration", "level": 3, "source": "existing" },
+            { "skill": "data-processing", "level": 3, "source": "existing" },
+            { "skill": "model-eval", "level": 3, "source": "existing" },
+            { "skill": "product-collab", "level": 3, "source": "existing" },
+            { "skill": "data-loop", "level": 2, "source": "added" }
+          ]
+        },
+        {
+          "order": 3, "code": "T3", "name": "高级 AI 工程师",
+          "requirements": [
+            { "skill": "intelligent-sys", "level": 4, "source": "existing" },
+            { "skill": "model-eng", "level": 4, "source": "existing" },
+            { "skill": "data-quality-gov", "level": 4, "source": "existing" },
+            { "skill": "tech-influence", "level": 3, "source": "existing" },
+            { "skill": "model-eval", "level": 4, "source": "added" }
+          ]
+        },
+        {
+          "order": 4, "code": "T4", "name": "AI 架构专家",
+          "requirements": [
+            { "skill": "ai-platform-arch", "level": 5, "source": "existing" },
+            { "skill": "ai-tech-strategy", "level": 4, "source": "existing" },
+            { "skill": "security-gov", "level": 4, "source": "existing" },
+            { "skill": "talent-dev", "level": 4, "source": "existing" },
+            { "skill": "distributed-training", "level": 4, "source": "added" }
+          ]
+        }
       ]
     }
   ]

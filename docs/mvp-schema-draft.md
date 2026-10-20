@@ -26,9 +26,9 @@
 | **标准定义** | `mvp_competency` | 子能力定义 | ~80 |
 | | `mvp_competency_level` | 子能力 × 等级锚点 | ~400 (80×5) |
 | | `mvp_skill_competency` | 技能 × 等级 × 子能力要求 | ~500 |
-| | `mvp_title_track` | 职称序列（13 类） | 13 |
-| | `mvp_title_level` | 职称层级（每序列 4 层） | 52 (13×4) |
-| | `mvp_title_requirement` | 职称所需技能 | ~200 |
+| | `mvp_title_track` | 职称序列（3 类技术序列） | 3 |
+| | `mvp_title_level` | 职称层级（每序列 4 层） | 12 (3×4) |
+| | `mvp_title_requirement` | 职称所需技能（每层 5 项 × 12 层） | 60 |
 | | `mvp_standard_version` | 标准版本 | ~5 |
 | **员工状态** | `mvp_employee_competency` | 员工子能力认证 | ~300 |
 | | `mvp_employee_skill` | 员工技能认证（新） | ~150 |
@@ -159,13 +159,15 @@
 | `slug` | varchar(64) unique | ✓ | 如 `java-track` |
 | `name` | varchar(128) | ✓ | "Java 工程师" |
 | `category` | varchar(32) | ✓ | `研发技术` / `数据` / `业务与管理` |
-| `path_kind` | varchar(16) | ✓ | `single` / `dual`（销售双路径） |
+| `path_kind` | varchar(16) | ✓ | `single`；`dual` 预留给后续双通道序列，MVP 不用 |
 | `status` | varchar(16) | ✓ | `draft` / `published` / `archived` |
 
-**13 个序列**：
-- 研发技术：Java、前端、Python、测试与质量、运维与可靠性、算法工程
-- 数据：数据分析、数据工程、数据治理
-- 业务与管理：销售、产品、项目管理、客户成功
+**3 个序列（MVP 只做技术类，沿用库内既有 `career_sequence` 定义）**：
+- `software` 软件开发序列 —— T1 初级 / T2 中级 / T3 高级 / T4 资深·专家
+- `platform` 平台工程序列 —— T1 初级软件开发工程师 / T2 平台开发工程师 / T3 高级平台工程师 / T4 平台架构专家
+- `ai` 数据与 AI 序列 —— T1 初级软件开发工程师 / T2 AI 应用开发工程师 / T3 高级 AI 工程师 / T4 AI 架构专家
+
+`management`（管理通道）在库内存在但 MVP 不纳入职称判定，避免管理序列与专业序列重复计入同一批员工。
 
 ---
 
@@ -823,8 +825,8 @@
 
 | # | 原问题 | 定论 |
 |---|---|---|
-| 1 | 30 名员工的种子数据 | 4 名真实员工 + 26 名虚构演示员工，全部标演示数据；组织关系按 13 序列分配主管/专家/专家组（D7） |
-| 2 | `mvp_org_relation.domain` 取值范围 | 13 序列 slug 粒度（`java`/`frontend`/…），跨路径专家复核需要领域粒度 |
+| 1 | 30 名员工的种子数据 | 4 名真实员工 + 26 名虚构演示员工，全部标演示数据；组织关系按 3 序列分配主管/专家/专家组（D7、D13） |
+| 2 | `mvp_org_relation.domain` 取值范围 | 3 序列 slug 粒度：`software` / `platform` / `ai`；跨路径专家复核按此粒度配人 |
 | 3 | 审批任务 assignee 为 NULL 时 | `status='waiting-assign'` + NULL |
 | 4 | L1 材料判断满足后是否直接写 active | 直接 `active` 并通知员工，不服走申诉（D6） |
 | 5 | 同技能重复申请同等级 | 不允许，只能升级或走申诉/复核（D10） |
@@ -834,7 +836,7 @@
 
 **另外三项与本稿表结构相关的修正**（详见 mvp-dev-plan.md）：
 
-- `mvp_title_level`：13 序列统一 4 层（52 条），`level_order` 去掉 `<=4` 的 CHECK，保留 1~6 上限，便于后期改可变层数（D1）。
+- `mvp_title_level`：3 序列各 4 层（12 条），`level_order` 去掉 `<=4` 的 CHECK，保留 1~6 上限，便于后期改可变层数（D1、D13）。
 - `mvp_appeal`：新增 `decided_kind`（`ai` / `manager` / `expert`），用于区分 L1/L2 材料申诉的 AI 重判、主管判定与 L3-L5 专家复核。
 - `mvp_standard_version`：新增 `source`（`refined` / `ai-draft` / `assumed`）、`reviewed_by`、`published_by`，支撑「领域专家编写 → 领域负责人审核 → 管理员发布」三级流程（D11）。
 
@@ -847,7 +849,7 @@
 
 1. 把 24 张表的 Drizzle 定义写到 `server/database/mvp-schema.ts`（独立文件，不动现有 `schema.ts`）
 2. 写迁移脚本 `scripts/mvp-migrate.mjs`（只创建新表，不动 27 张旧表）
-3. 写 30 名员工 + 组织关系 + 13 序列骨架 + 3 个完整序列（Java / 数据分析 / 销售）的种子脚本
+3. 写 30 名员工 + 组织关系 + 3 序列骨架（`software` / `platform` / `ai`，各 4 层、共 60 条技能要求）的种子脚本
 4. 写 `legacy-sync.service.ts` 的 P0 映射逻辑
 5. 然后再开始 M2 的接口和页面
 

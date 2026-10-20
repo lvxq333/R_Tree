@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS mvp_title_track (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 
-COMMENT ON TABLE mvp_title_track IS 'MVP 职称序列表（13 类）';
+COMMENT ON TABLE mvp_title_track IS 'MVP 职称序列表（3 类：software / platform / ai）';
 
 -- 2.5 职称层级表
 CREATE TABLE IF NOT EXISTS mvp_title_level (
