@@ -203,7 +203,7 @@ for (const [from, to] of Object.entries(draft.domainMapping ?? {})) p(`| \`${fro
 p('');
 const unmapped = draft.domainUnmapped ?? [];
 if (unmapped.length) {
-  p(`无对应序列：${unmapped.map(d => `\`${d}\``).join('、')}。当前持有这些 domain 的演示员工共 7 人（销售：唐丽、曹静、冯刚、孔明；产品：谢敏、邓超；项目管理：韩雪），在三序列下没有可归属的专家身份。M1 重写种子时二选一：改岗到三序列内，或保留员工但清空 domain 并标注「超出 MVP 序列范围」。`, '');
+  p(`无对应序列：${unmapped.map(d => `\`${d}\``).join('、')}。原先持有这些 domain 的 7 名演示员工（销售：唐丽、曹静、冯刚、孔明；产品：谢敏、邓超；项目管理：韩雪）已于 2026-10-20 连同账号与组织关系一并删除（\`009-remove-non-tech-employees.sql\`），种子脚本同步移除，不再出现在任何序列中。`, '');
 }
 
 p('---', '');

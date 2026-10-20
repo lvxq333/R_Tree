@@ -1,7 +1,7 @@
 /**
  * 企业级员工关系种子数据生成脚本
  *
- * 用途：生成 30 名员工的完整企业数据，包括：
+ * 用途：生成 23 名员工的完整企业数据（研发技术中心 15 + 数据技术中心 8），包括：
  * - 员工基本信息（姓名、部门、岗位、入职日期等）
  * - 组织关系（组长、主管、领域专家）
  * - 账号密码（用于测试登录）
@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { scryptSync } from 'node:crypto';
 
 // ============================================================
-// 1. 员工基本信息（30 人）
+// 1. 员工基本信息（23 人，只覆盖 MVP 三条技术序列）
 // ============================================================
 
 const EMPLOYEES = [
@@ -40,19 +40,16 @@ const EMPLOYEES = [
   { slug: 'huang-ming', name: '黄明', gender: '男', birthYear: 1994, org: '数据技术中心-数据分析组', role: '高级数据分析师', hireDate: '2019-11-23', email: 'huangming@example.com', mobile: '13800000017' },
   { slug: 'xu-ting', name: '徐婷', gender: '女', birthYear: 1996, org: '数据技术中心-数据分析组', role: '数据分析师', hireDate: '2021-09-05', email: 'xuting@example.com', mobile: '13800000018' },
   { slug: 'gao-feng', name: '高峰', gender: '男', birthYear: 1991, org: '数据技术中心-数据工程组', role: '数据工程专家', hireDate: '2016-08-14', email: 'gaofeng@example.com', mobile: '13800000019' },
-  { slug: 'lin-xiao', name: '林晓', gender: '女', birthYear: 1995, org: '数据技术中心-数据工程组', role: '高级数据工程师', hireDate: '2020-02-28', email: 'linxiao@example.com', mobile: '13800000020' },
+  { slug: 'lin-xiao-de', name: '林晓（数据）', gender: '女', birthYear: 1995, org: '数据技术中心-数据工程组', role: '高级数据工程师', hireDate: '2020-02-28', email: 'linxiao-de@example.com', mobile: '13800000020' },
   { slug: 'he-jun', name: '何军', gender: '男', birthYear: 1997, org: '数据技术中心-数据工程组', role: '数据工程师', hireDate: '2022-10-17', email: 'hejun@example.com', mobile: '13800000021' },
   { slug: 'luo-yan', name: '罗燕', gender: '女', birthYear: 1993, org: '数据技术中心-数据治理组', role: '数据治理专家', hireDate: '2018-05-09', email: 'luoyan@example.com', mobile: '13800000022' },
   { slug: 'song-wei', name: '宋伟', gender: '男', birthYear: 1996, org: '数据技术中心-数据治理组', role: '数据治理工程师', hireDate: '2021-04-26', email: 'songwei@example.com', mobile: '13800000023' },
 
-  // ===== 业务与管理部 (7 人) =====
-  { slug: 'tang-li', name: '唐丽', gender: '女', birthYear: 1990, org: '业务与管理部-销售组', role: '销售总监', hireDate: '2015-03-12', email: 'tangli@example.com', mobile: '13800000024' },
-  { slug: 'feng-gang', name: '冯刚', gender: '男', birthYear: 1993, org: '业务与管理部-销售组', role: '高级销售经理', hireDate: '2018-09-20', email: 'fenggang@example.com', mobile: '13800000025' },
-  { slug: 'cao-jing', name: '曹静', gender: '女', birthYear: 1995, org: '业务与管理部-销售组', role: '销售经理', hireDate: '2020-06-15', email: 'caojing@example.com', mobile: '13800000026' },
-  { slug: 'xie-min', name: '谢敏', gender: '女', birthYear: 1992, org: '业务与管理部-产品组', role: '产品总监', hireDate: '2017-01-08', email: 'xiemin@example.com', mobile: '13800000027' },
-  { slug: 'deng-chao', name: '邓超', gender: '男', birthYear: 1994, org: '业务与管理部-产品组', role: '高级产品经理', hireDate: '2019-07-22', email: 'dengchao@example.com', mobile: '13800000028' },
-  { slug: 'han-xue', name: '韩雪', gender: '女', birthYear: 1996, org: '业务与管理部-项目管理组', role: '项目经理', hireDate: '2021-05-10', email: 'hanxue@example.com', mobile: '13800000029' },
-  { slug: 'kong-ming', name: '孔明', gender: '男', birthYear: 1991, org: '业务与管理部-客户成功组', role: '客户成功专家', hireDate: '2016-11-30', email: 'kongming@example.com', mobile: '13800000030' },
+  // ===== 业务与管理部（7 人）已于 2026-10-20 移除 =====
+  // 销售 / 产品 / 项目管理 / 客户成功不在 MVP 的三条技术序列内，
+  // 保留会让职称判定、跨路径专家复核出现无法归属的员工，故整段删除。
+  // 原 7 人：tang-li 唐丽、feng-gang 冯刚、cao-jing 曹静、
+  //          xie-min 谢敏、deng-chao 邓超、han-xue 韩雪、kong-ming 孔明
 ];
 
 // ============================================================
@@ -86,23 +83,16 @@ const ORG_RELATIONS = [
   { employee: 'huang-ming', relationType: 'manager', target: 'yang-li', domain: null },
   { employee: 'xu-ting', relationType: 'manager', target: 'yang-li', domain: null },
 
-  // 数据工程组：高峰(数据工程专家) 是组长，林晓/何军 是组员
-  { employee: 'lin-xiao', relationType: 'manager', target: 'gao-feng', domain: null },
+  // 数据工程组：高峰(数据工程专家) 是组长，林晓（数据）/何军 是组员
+  { employee: 'lin-xiao-de', relationType: 'manager', target: 'gao-feng', domain: null },
   { employee: 'he-jun', relationType: 'manager', target: 'gao-feng', domain: null },
 
   // 数据治理组：罗燕(数据治理专家) 是组长，宋伟 是组员
   { employee: 'song-wei', relationType: 'manager', target: 'luo-yan', domain: null },
 
-  // ===== 业务与管理部 =====
-  // 销售组：唐丽(销售总监) 是组长，冯刚/曹静 是组员
-  { employee: 'feng-gang', relationType: 'manager', target: 'tang-li', domain: null },
-  { employee: 'cao-jing', relationType: 'manager', target: 'tang-li', domain: null },
-
-  // 产品组：谢敏(产品总监) 是组长，邓超 是组员
-  { employee: 'deng-chao', relationType: 'manager', target: 'xie-min', domain: null },
-
-  // 项目管理组：韩雪(项目经理) 独立
-  // 客户成功组：孔明(客户成功专家) 独立
+  // ===== 业务与管理部（已移除）=====
+  // 销售组（唐丽/冯刚/曹静）、产品组（谢敏/邓超）、项目管理组（韩雪）、
+  // 客户成功组（孔明）不在 MVP 三条技术序列内，员工与关系一并删除。
 
   // ===== 领域专家关系 =====
   // Java 领域专家：李娜
@@ -130,21 +120,13 @@ const ORG_RELATIONS = [
   { employee: 'xu-ting', relationType: 'expert', target: 'yang-li', domain: 'data-analysis' },
 
   // 数据工程领域专家：高峰
-  { employee: 'lin-xiao', relationType: 'expert', target: 'gao-feng', domain: 'data-engineering' },
+  { employee: 'lin-xiao-de', relationType: 'expert', target: 'gao-feng', domain: 'data-engineering' },
   { employee: 'he-jun', relationType: 'expert', target: 'gao-feng', domain: 'data-engineering' },
 
   // 数据治理领域专家：罗燕
   { employee: 'song-wei', relationType: 'expert', target: 'luo-yan', domain: 'data-governance' },
 
-  // 销售领域专家：唐丽
-  { employee: 'feng-gang', relationType: 'expert', target: 'tang-li', domain: 'sales' },
-  { employee: 'cao-jing', relationType: 'expert', target: 'tang-li', domain: 'sales' },
-
-  // 产品领域专家：谢敏
-  { employee: 'deng-chao', relationType: 'expert', target: 'xie-min', domain: 'product' },
-
-  // 项目管理领域专家：韩雪（暂无下属）
-  // 客户成功领域专家：孔明（暂无下属）
+  // 销售 / 产品领域的专家关系随业务与管理部一并移除
 ];
 
 // ============================================================
@@ -206,42 +188,32 @@ function generateSQL() {
   statements.push('');
 
   // 清空现有数据（仅用于演示环境）
+  // 注意：保留旧的 4 名演示员工（zhang-san/zhou-chen/lin-xiao/chen-ran 等），
+  // 因为 employee_project/performance_record/employee_skill 等旧表仍引用他们，
+  // facts.service.ts 启动时会同步这些旧数据。
   statements.push('-- 清空现有数据（仅用于演示环境）');
-  statements.push('-- 按照外键依赖顺序删除（先删除引用表，再删除被引用表）');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM validation_work_material WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM validation_notice WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM validation_discovery WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM mvp_skill_assessment WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM mvp_mock_fact_source WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM mvp_fact_change WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM mvp_fact WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM mvp_fact_employee WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM mvp_org_relation WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM mvp_employee_skill WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM app_session WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM app_external_identity WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM app_oauth_flow WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM app_account WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
-  statements.push('DO $$ BEGIN');
-  statements.push('  DELETE FROM employee WHERE true; EXCEPTION WHEN undefined_table THEN NULL; END $$;');
+  statements.push('-- 保留旧演示员工（zhang-san/zhou-chen/lin-xiao/chen-ran 等），');
+  statements.push('-- 因为 employee_project/performance_record/employee_skill 等旧表仍引用他们');
+  statements.push('');
+
+  // 新员工 slug 列表
+  const newEmployeeSlugs = EMPLOYEES.map(e => `'${e.slug}'`).join(',');
+
+  statements.push('-- 删除新员工的关联数据（按外键依赖顺序）');
+  statements.push(`DELETE FROM mvp_fact_change WHERE employee_id IN (SELECT id FROM employee WHERE slug IN (${newEmployeeSlugs}));`);
+  statements.push(`DELETE FROM mvp_fact WHERE employee_id IN (SELECT id FROM employee WHERE slug IN (${newEmployeeSlugs}));`);
+  statements.push(`DELETE FROM mvp_fact_employee WHERE employee_id IN (SELECT id FROM employee WHERE slug IN (${newEmployeeSlugs}));`);
+  statements.push(`DELETE FROM mvp_org_relation WHERE employee_slug IN (${newEmployeeSlugs}) OR target_slug IN (${newEmployeeSlugs});`);
+  statements.push(`DELETE FROM mvp_employee_skill WHERE employee_slug IN (${newEmployeeSlugs});`);
+  statements.push(`DELETE FROM app_session WHERE account_id IN (SELECT a.id FROM app_account a JOIN employee e ON e.id=a.employee_id WHERE e.slug IN (${newEmployeeSlugs}));`);
+  statements.push(`DELETE FROM app_external_identity WHERE account_id IN (SELECT a.id FROM app_account a JOIN employee e ON e.id=a.employee_id WHERE e.slug IN (${newEmployeeSlugs}));`);
+  statements.push(`DELETE FROM app_oauth_flow WHERE link_account_id IN (SELECT a.id FROM app_account a JOIN employee e ON e.id=a.employee_id WHERE e.slug IN (${newEmployeeSlugs}));`);
+  statements.push(`DELETE FROM app_account WHERE employee_id IN (SELECT id FROM employee WHERE slug IN (${newEmployeeSlugs}));`);
+  statements.push(`DELETE FROM employee WHERE slug IN (${newEmployeeSlugs});`);
   statements.push('');
 
   // 插入员工
-  statements.push('-- 插入 30 名员工');
+  statements.push(`-- 插入 ${EMPLOYEES.length} 名员工`);
   for (const emp of EMPLOYEES) {
     const id = randomUUID();
     statements.push(`INSERT INTO employee(id, slug, name, avatar_text, avatar_tone, role, org, status, hire_date, birth_year, gender, education, is_current_user, _created_at, _updated_at)
@@ -355,4 +327,3 @@ console.log('--   张伟（Java 高级工程师）: zhang-wei / SkillTree@2026')
 console.log('--   李娜（Java 技术专家）: li-na / SkillTree@2026');
 console.log('--   刘洋（前端高级工程师）: liu-yang / SkillTree@2026');
 console.log('--   陈静（前端技术专家）: chen-jing / SkillTree@2026');
-console.log('--   唐丽（销售总监）: tang-li / SkillTree@2026');

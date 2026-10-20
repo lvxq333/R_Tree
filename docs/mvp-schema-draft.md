@@ -825,7 +825,7 @@
 
 | # | 原问题 | 定论 |
 |---|---|---|
-| 1 | 30 名员工的种子数据 | 4 名真实员工 + 26 名虚构演示员工，全部标演示数据；组织关系按 3 序列分配主管/专家/专家组（D7、D13） |
+| 1 | 演示员工规模 | **24 名**：种子 23 名（研发 15 + 数据 8）+ 既有 `lin-xiao`；原销售/产品/项目管理 7 人已删除（009 迁移）；组织关系按 3 序列分配主管/专家（D7、D13） |
 | 2 | `mvp_org_relation.domain` 取值范围 | 3 序列 slug 粒度：`software` / `platform` / `ai`；跨路径专家复核按此粒度配人 |
 | 3 | 审批任务 assignee 为 NULL 时 | `status='waiting-assign'` + NULL |
 | 4 | L1 材料判断满足后是否直接写 active | 直接 `active` 并通知员工，不服走申诉（D6） |
@@ -849,7 +849,7 @@
 
 1. 把 24 张表的 Drizzle 定义写到 `server/database/mvp-schema.ts`（独立文件，不动现有 `schema.ts`）
 2. 写迁移脚本 `scripts/mvp-migrate.mjs`（只创建新表，不动 27 张旧表）
-3. 写 30 名员工 + 组织关系 + 3 序列骨架（`software` / `platform` / `ai`，各 4 层、共 48 条技能要求）的种子脚本
+3. 写 24 名员工 + 组织关系 + 3 序列骨架（`software` / `platform` / `ai`，各 4 层、共 48 条技能要求）的种子脚本
 4. 写 `legacy-sync.service.ts` 的 P0 映射逻辑
 5. 然后再开始 M2 的接口和页面
 
