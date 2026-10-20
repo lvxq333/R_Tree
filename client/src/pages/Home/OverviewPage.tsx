@@ -50,14 +50,14 @@ const GROWTH_RANGES: { key: GrowthRangeKey; label: string }[] = [
 const GAP_SOURCE_TEXT: Record<string, string> = { career: '职业', okr: 'OKR', current: '岗位', profile: '画像' };
 
 /* ========== 能力结构雷达图几何参数 ========== */
-const RADAR_CENTER_X = 170;
+const RADAR_CENTER_X = 185;
 const RADAR_CENTER_Y = 122;
-const RADAR_RADIUS = 84;
+const RADAR_RADIUS = 86;
 const RADAR_LEVELS = 5;
 
 const radarPoint = (index: number, total: number, value: number): { x: number; y: number } => {
   const angle = -Math.PI / 2 + (index * 2 * Math.PI) / total;
-  const radius = (RADAR_RADIUS * value) / RADAR_LEVELS;
+  const radius = (RADAR_RADIUS * Math.min(value, RADAR_LEVELS)) / RADAR_LEVELS;
   return { x: RADAR_CENTER_X + radius * Math.cos(angle), y: RADAR_CENTER_Y + radius * Math.sin(angle) };
 };
 
@@ -75,14 +75,14 @@ const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
   }
   const labelPoint = (index: number): { x: number; y: number; anchor: 'start' | 'middle' | 'end' } => {
     const angle = -Math.PI / 2 + (index * 2 * Math.PI) / axes.length;
-    const x = RADAR_CENTER_X + (RADAR_RADIUS + 18) * Math.cos(angle);
-    const y = RADAR_CENTER_Y + (RADAR_RADIUS + 16) * Math.sin(angle);
+    const x = RADAR_CENTER_X + (RADAR_RADIUS + 16) * Math.cos(angle);
+    const y = RADAR_CENTER_Y + (RADAR_RADIUS + 15) * Math.sin(angle);
     const cos = Math.cos(angle);
     const anchor = Math.abs(cos) < 0.3 ? 'middle' : cos > 0 ? 'start' : 'end';
     return { x, y: y + 4, anchor };
   };
   return (
-    <svg className="radar-chart" viewBox="0 0 340 244" role="img" aria-label="能力结构雷达图：当前能力与目标要求对照">
+    <svg className="radar-chart" viewBox="0 0 370 248" role="img" aria-label="能力结构雷达图：我的水平与团队平均对照">
       {[1, 2, 3, 4, 5].map((level) => (
         <polygon
           key={level}
@@ -91,19 +91,23 @@ const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
             return `${point.x},${point.y}`;
           }).join(' ')}
           fill={level === RADAR_LEVELS ? '#fbfaff' : 'none'}
-          stroke="#e4e7f2"
+          stroke={level === RADAR_LEVELS ? '#dfe3f0' : '#eaedf6'}
           strokeWidth={1}
         />
       ))}
       {axes.map((axis, index) => {
         const point = radarPoint(index, axes.length, RADAR_LEVELS);
-        return <line key={axis.name} x1={RADAR_CENTER_X} y1={RADAR_CENTER_Y} x2={point.x} y2={point.y} stroke="#e4e7f2" strokeWidth={1} />;
+        return <line key={axis.name} x1={RADAR_CENTER_X} y1={RADAR_CENTER_Y} x2={point.x} y2={point.y} stroke="#eaedf6" strokeWidth={1} />;
       })}
-      <polygon points={radarPolygon(axes, 'target')} fill="rgba(87, 144, 239, .08)" stroke="#5790ef" strokeWidth={1.5} strokeDasharray="5 4" />
-      <polygon points={radarPolygon(axes, 'current')} fill="rgba(101, 88, 232, .22)" stroke="#6558e8" strokeWidth={2} strokeLinejoin="round" />
+      <polygon points={radarPolygon(axes, 'target')} fill="rgba(87, 144, 239, .10)" stroke="#5790ef" strokeWidth={2} strokeLinejoin="round" strokeDasharray="6 4" />
+      <polygon points={radarPolygon(axes, 'current')} fill="rgba(101, 88, 232, .16)" stroke="#6558e8" strokeWidth={2.5} strokeLinejoin="round" />
+      {axes.map((axis, index) => {
+        const point = radarPoint(index, axes.length, axis.target);
+        return <circle key={`${axis.name}-team`} cx={point.x} cy={point.y} r={3} fill="#5790ef" stroke="#fff" strokeWidth={1.5} />;
+      })}
       {axes.map((axis, index) => {
         const point = radarPoint(index, axes.length, axis.current);
-        return <circle key={`${axis.name}-dot`} cx={point.x} cy={point.y} r={3} fill="#6558e8" />;
+        return <circle key={`${axis.name}-dot`} cx={point.x} cy={point.y} r={3.5} fill="#6558e8" stroke="#fff" strokeWidth={1.5} />;
       })}
       {axes.map((axis, index) => {
         const label = labelPoint(index);
@@ -140,7 +144,8 @@ const OverviewPage = () => {
   const [sequenceMenuOpen, setSequenceMenuOpen] = useState<boolean>(false);
   const [gapFilter, setGapFilter] = useState<GapFilterKey>('all');
   const [growthRange, setGrowthRange] = useState<GrowthRangeKey>('12m');
-  const [selectedGrowthDate, setSelectedGrowthDate] = useState<string>('2026.09');
+  const [selectedGrowthDate, setSelectedGrowthDate] = useState<string | null>(null);
+  const [recentCertCount, setRecentCertCount] = useState(0);
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -222,7 +227,10 @@ const OverviewPage = () => {
     let cancelled = false;
     growthApi.getGrowthEvents(growthRange as GrowthRange)
       .then((res: GrowthEventsResponse) => {
-        if (!cancelled) setGrowthEvents(res.events);
+        if (!cancelled) {
+          setGrowthEvents(res.events);
+          setRecentCertCount(res.recentCertCount ?? 0);
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -299,11 +307,12 @@ const OverviewPage = () => {
     okr: gapItems.filter((item: GapPoolItem) => item.source === 'okr').length,
     current: gapItems.filter((item: GapPoolItem) => item.source === 'current').length,
   };
-  const lastEvent = growthEvents[growthEvents.length - 1];
-  const effectiveSelectedDate = growthEvents.some((item: SkillGrowthEvent) => item.date === selectedGrowthDate)
+  // 默认选中第一条轨迹（入职职称认定）；用户点选后跟随所选事件。
+  const firstEvent = growthEvents[0];
+  const effectiveSelectedDate = selectedGrowthDate !== null && growthEvents.some((item: SkillGrowthEvent) => item.date === selectedGrowthDate)
     ? selectedGrowthDate
-    : lastEvent?.date ?? '';
-  const selectedEvent = growthEvents.find((item: SkillGrowthEvent) => item.date === effectiveSelectedDate) ?? lastEvent;
+    : firstEvent?.date ?? '';
+  const selectedEvent = growthEvents.find((item: SkillGrowthEvent) => item.date === effectiveSelectedDate) ?? firstEvent;
   const xStep = growthEvents.length > 1
     ? (GROWTH_CHART_RIGHT - GROWTH_CHART_LEFT) / (growthEvents.length - 1)
     : 0;
@@ -528,7 +537,7 @@ const OverviewPage = () => {
       <section className="panel growth-curve-panel" aria-labelledby="growth-curve-title">
         <div className="growth-curve-head">
           <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>从入职第一次点亮开始保留全部轨迹；当前有效认证以技能明细为准</p></div>
-          <div className="growth-curve-summary"><span>当前有效 <b>{metrics.certifiedSkillCount}</b> 项</span><span>历史累计 <b>{lastEvent?.total ?? 0}</b> 项</span></div>
+          <div className="growth-curve-summary"><span>当前已点亮 <b>{metrics.certifiedSkillCount}</b> 项</span><span>近6个月 <b>+{recentCertCount}</b></span></div>
           <div className="growth-range" role="tablist" aria-label="选择成长轨迹时间范围">
             {GROWTH_RANGES.map((rangeOption) => (
               <button

@@ -376,6 +376,8 @@ export interface SkillGrowthEvent {
 
 export interface GrowthEventsResponse {
   events: SkillGrowthEvent[];
+  /** 近 6 个月新增认证次数（不含职称认定），用于右上角统计 */
+  recentCertCount: number;
 }
 
 /** Gap 条目下的一条子能力要求（技能在该等级下的可评估子能力） */

@@ -164,6 +164,7 @@ export class GrowthService {
     const skillNameBySlug = new Map<string, string>(
       skills.map((row: typeof skill.$inferSelect) => [row.slug, row.name]),
     );
+    const preferred = this.judging.preferredTrackForCurrentEmployee();
 
     const skillsByNode = new Map<string, CareerNodeSkill[]>();
     const achievedByNode = new Map<string, boolean>();
@@ -182,12 +183,13 @@ export class GrowthService {
           current = Math.max(raw, nodeSkill.requiredLevel);
           source = sourceByTrack.get(node.sequenceSlug) === 'skills' ? 'skill-covered' : 'title-covered';
         } else if (Number.isInteger(nodeLevel) && heldLevel > 0 && nodeLevel === heldLevel + 1) {
-          // 紧邻下一层：用有效等级（职称覆盖 + 职称基线），真实反映高级工程师的既有能力。
-          const eff = effective.levels.get(nodeSkill.skillSlug) ?? 0;
+          // 紧邻下一层：偏好序列用有效等级（职称覆盖 + 职称基线）反映既有能力；
+          // 其他序列按原始认证展示，避免本序列职称覆盖泄漏到别的序列、与实际职级矛盾。
+          const eff = node.sequenceSlug === preferred ? (effective.levels.get(nodeSkill.skillSlug) ?? 0) : 0;
           current = Math.max(raw, eff);
-          source = effective.baseline.has(nodeSkill.skillSlug)
+          source = eff > raw && effective.baseline.has(nodeSkill.skillSlug)
             ? 'title-baseline'
-            : effective.covered.has(nodeSkill.skillSlug)
+            : eff > raw && effective.covered.has(nodeSkill.skillSlug)
               ? 'title-covered'
               : 'cert';
         }
@@ -224,7 +226,6 @@ export class GrowthService {
       nodesBySequence.set(node.sequenceSlug, list);
     }
 
-    const preferred = this.judging.preferredTrackForCurrentEmployee();
     for (const [trackSlug, trackNodes] of nodesBySequence) {
       if (trackSlug === 'management') continue;
       const heldLevel = levelByTrack.get(trackSlug) ?? 0;
@@ -243,7 +244,9 @@ export class GrowthService {
       for (const node of trackNodes) {
         const nodeLevel = Number((node.code ?? '').replace(/^T/, ''));
         if (!node.achieved || !Number.isInteger(nodeLevel)) continue;
-        node.meta = nodeLevel === heldLevel && trackSlug === preferred ? '当前岗位' : '已达成';
+        node.meta = nodeLevel === heldLevel
+          ? (trackSlug === preferred ? '当前岗位' : '当前职级')
+          : '已达成';
       }
     }
 
@@ -423,15 +426,21 @@ export class GrowthService {
 
     // 时间范围按真实日期过滤：近 N 个月以今天为基准回溯，全部返回完整轨迹。
     const now = Date.now();
+    const sixMonthsAgo = now - 6 * 30.44 * 24 * 3600 * 1000;
     const cutoff =
-      range === '6m' ? now - 6 * 30.44 * 24 * 3600 * 1000
+      range === '6m' ? sixMonthsAgo
         : range === '12m' ? now - 12 * 30.44 * 24 * 3600 * 1000
           : 0;
     const limited = cutoff > 0
       ? pending.filter(item => item.at >= cutoff).map(item => ({ ...item.event, date: item.date }))
       : events;
 
-    return { events: limited };
+    // 右上角统计：近 6 个月新增认证次数（不含职称认定），与时间范围筛选无关。
+    const recentCertCount = pending.filter(
+      item => item.event.category === '技能认证' && item.at >= sixMonthsAgo,
+    ).length;
+
+    return { events: limited, recentCertCount };
   }
 
   async getGaps(): Promise<GapListResponse> {

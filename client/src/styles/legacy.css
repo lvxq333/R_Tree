@@ -218,7 +218,7 @@ body {
 
 .section-head.compact { margin-bottom: 6px; }
 .section-head.compact button { font-size:var(--text-section); }
-.radar-chart { display: block; width: 100%; height: 230px; }
+.radar-chart { display: block; width: 100%; max-width: 400px; height: auto; margin: 0 auto; }
 .chart-legend { display: flex; justify-content: center; gap: 20px; color: #8f959e; font-size:var(--text-meta); }
 .chart-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
 .legend-purple { background: #8b67f6; }
