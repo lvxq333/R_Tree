@@ -218,12 +218,11 @@ body {
 
 .section-head.compact { margin-bottom: 6px; }
 .section-head.compact button { font-size:var(--text-section); }
-.radar-chart { display: block; width: 100%; max-width: 400px; height: auto; margin: 0 auto; }
-.chart-legend { display: flex; justify-content: center; gap: 20px; color: #8f959e; font-size:var(--text-meta); }
-.chart-legend i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 50%; }
-.legend-purple { background: #8b67f6; }
-.legend-blue { background: #5790ef; }
-.radar-footnote { margin: 6px 0 0; color: #8f959e; font-size:var(--text-caption); text-align: center; }
+.radar-chart { display: block; width: 100%; max-width: 480px; height: auto; margin: 0 auto; }
+.chart-legend { display: flex; justify-content: center; gap: 28px; color: #4b5563; font-size: 13px; font-weight: 600; }
+.chart-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; }
+.legend-purple { background: #7c4dff; }
+.legend-blue { background: #4a7df0; }
 
 .donut {
   width: 152px;
@@ -748,10 +747,10 @@ body {
 .hero-skill-signal.is-clear .hero-signal-orbit { display: none; }
 .hero-skill-signal.is-clear .hero-signal-icon { color: #16816e !important; }
 
-.radar-skill-entry { min-height: 38px; display: flex; align-items: center; gap: 7px; padding: 7px 10px !important; border: 1px solid #d6dcff !important; border-radius: 8px !important; background: #f3f5ff !important; color: #3d55cc !important; font-size:var(--text-meta) !important; font-weight: 700; cursor: pointer; }
-.radar-skill-entry:hover { border-color: #aeb9ff !important; background: #ecefff !important; }
-.radar-skill-entry span { padding: 2px 5px; border-radius: 5px; background: #fff; color: #6b7280; font-size:var(--text-caption); font-weight: 600; }
-.radar-skill-entry span b { color: #3d55cc; }
+.radar-skill-entry { min-height: 40px; display: flex; align-items: center; gap: 8px; padding: 8px 6px 8px 14px !important; border: none !important; border-radius: 10px !important; background: #eef4ff !important; color: #3b6ff0 !important; font-size: 13px !important; font-weight: 600; cursor: pointer; }
+.radar-skill-entry:hover { background: #e3edff !important; }
+.radar-skill-entry span { padding: 4px 10px; border-radius: 8px; background: #fff; color: #5b6472; font-size: 12px; font-weight: 600; }
+.radar-skill-entry span b { color: #3b6ff0; }
 
 @keyframes signal-pulse {
   0% { opacity: .75; transform: scale(.85); }

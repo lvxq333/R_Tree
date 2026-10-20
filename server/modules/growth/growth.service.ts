@@ -41,6 +41,15 @@ import type {
 const GAP_SOURCES: string[] = ['career', 'okr', 'current'];
 /** 技术序列：管理通道取这些序列的最高职级做平移基准 */
 const TECH_TRACKS: string[] = ['software', 'platform', 'ai'];
+/** 能力结构雷达图的六个固定维度：技能分类 → 维度聚合 */
+const RADAR_DIMENSIONS: { name: string; categories: string[] }[] = [
+  { name: '研发工程能力', categories: ['coding-eng', 'eng-practice', 'rd-efficiency', 'cloud-native', 'platform-eng', 'stability', 'data-ai', 'ai-app'] },
+  { name: '系统设计', categories: ['sys-design'] },
+  { name: '工程质量', categories: ['eng-quality'] },
+  { name: '协作与影响', categories: ['collaboration', 'collab-impact'] },
+  { name: '业务理解', categories: ['business'] },
+  { name: '问题解决', categories: ['problem-solving'] },
+];
 
 const GAP_SOURCE_LABELS: Record<GapSource, string> = {
   career: '职业',
@@ -588,28 +597,29 @@ export class GrowthService {
   }
 
   /**
-   * 能力结构分布（雷达图）：以已持有层 + 下一目标层的技能为轴，
-   * 我的水平用有效等级（认证/职称覆盖/职称基线），对照同部门团队平均。
+   * 能力结构分布（雷达图）：六个固定能力维度（按技能分类聚合），
+   * 我的水平用有效等级（认证/职称覆盖/职称基线）在维度内取最高，
+   * 对照同部门团队各成员同口径最高等级的平均值。
    */
   async getAbilityStructure(): Promise<AbilityStructureResponse> {
     const employeeSlug = currentEmployee().employeeSlug;
-    const overview = await this.judging.getOverview();
-    const track = overview.tracks.find(item => item.slug === overview.preferredTrack) ?? overview.tracks[0];
-    if (!track || track.levels.length === 0) {
-      return { axes: [], heldLevelCode: null, teamLabel: null, summary: '暂无职称序列数据' };
+    const skillRows = await this.db
+      .select({ slug: skill.slug, category: skill.categorySlug })
+      .from(skill);
+    const categoryBySkill = new Map(skillRows.map(row => [row.slug, row.category]));
+    const dimIndexByCategory = new Map<string, number>();
+    RADAR_DIMENSIONS.forEach((dim, index) => {
+      for (const category of dim.categories) dimIndexByCategory.set(category, index);
+    });
+
+    // 我的水平：有效等级（认证 / 职称覆盖 / 职称基线）在维度内取最高。
+    const effective = await this.judging.effectiveLevelsForCurrentEmployee();
+    const myByDim = RADAR_DIMENSIONS.map(() => 0);
+    for (const [skillSlug, level] of effective.levels) {
+      const dimIndex = dimIndexByCategory.get(categoryBySkill.get(skillSlug) ?? '');
+      if (dimIndex === undefined) continue;
+      myByDim[dimIndex] = Math.max(myByDim[dimIndex], Math.min(level, 5));
     }
-    const heldLevel = Math.max(0, ...track.levels.filter(level => level.state === 'certified').map(level => level.levelOrder));
-    const heldView = track.levels.find(level => level.levelOrder === heldLevel);
-    const nextView = track.levels.find(level => level.levelOrder === heldLevel + 1);
-    const axes = [heldView, nextView]
-      .filter(view => view !== undefined)
-      .flatMap(view => view.requirements.map(item => ({
-        name: item.skillName,
-        current: item.currentLevel,
-        target: 0,
-        skillSlug: item.skillSlug,
-        fromBaseline: item.fromBaseline,
-      })));
 
     // 团队口径：同部门（org）员工；部门只有本人时回退全体员工作为参照。
     const orgRows = await this.db
@@ -635,29 +645,32 @@ export class GrowthService {
       const key = `${row.employeeSlug}:${row.skillSlug}`;
       bestByMemberSkill.set(key, Math.max(bestByMemberSkill.get(key) ?? 0, row.level));
     }
-    const resultAxes: AbilityAxis[] = axes.map(axis => {
-      const values = members.map(member => bestByMemberSkill.get(`${member}:${axis.skillSlug}`) ?? 0);
+
+    const skillsByDim = RADAR_DIMENSIONS.map(dim =>
+      new Set(skillRows.filter(row => dim.categories.includes(row.category ?? '')).map(row => row.slug)),
+    );
+    const axes: AbilityAxis[] = RADAR_DIMENSIONS.map((dim, index) => {
+      const values = members.map(member => {
+        let best = 0;
+        for (const skillSlug of skillsByDim[index]) {
+          best = Math.max(best, bestByMemberSkill.get(`${member}:${skillSlug}`) ?? 0);
+        }
+        return best;
+      });
       const avg = values.length > 0 ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
       return {
-        name: axis.name,
-        current: axis.current,
+        name: dim.name,
+        current: myByDim[index],
         target: Math.round(avg * 10) / 10,
-        fromBaseline: axis.fromBaseline,
+        fromBaseline: false,
       };
     });
 
-    const summary = heldView
-      ? teamLabel
-        ? `已持有 ${heldView.levelName}，与${teamLabel}的平均能力对比`
-        : `已持有 ${heldView.levelName}`
-      : nextView
-        ? `下一目标 ${nextView.levelName}`
-        : '暂无能力要求';
     return {
-      axes: resultAxes,
-      heldLevelCode: heldView?.levelCode ?? null,
+      axes,
+      heldLevelCode: null,
       teamLabel,
-      summary,
+      summary: '我的水平与团队平均对比',
     };
   }
 

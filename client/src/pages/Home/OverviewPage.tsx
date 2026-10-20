@@ -50,9 +50,9 @@ const GROWTH_RANGES: { key: GrowthRangeKey; label: string }[] = [
 const GAP_SOURCE_TEXT: Record<string, string> = { career: '职业', okr: 'OKR', current: '岗位', profile: '画像' };
 
 /* ========== 能力结构雷达图几何参数 ========== */
-const RADAR_CENTER_X = 185;
-const RADAR_CENTER_Y = 122;
-const RADAR_RADIUS = 86;
+const RADAR_CENTER_X = 230;
+const RADAR_CENTER_Y = 186;
+const RADAR_RADIUS = 128;
 const RADAR_LEVELS = 5;
 
 const radarPoint = (index: number, total: number, value: number): { x: number; y: number } => {
@@ -75,14 +75,14 @@ const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
   }
   const labelPoint = (index: number): { x: number; y: number; anchor: 'start' | 'middle' | 'end' } => {
     const angle = -Math.PI / 2 + (index * 2 * Math.PI) / axes.length;
-    const x = RADAR_CENTER_X + (RADAR_RADIUS + 16) * Math.cos(angle);
-    const y = RADAR_CENTER_Y + (RADAR_RADIUS + 15) * Math.sin(angle);
+    const x = RADAR_CENTER_X + (RADAR_RADIUS + 26) * Math.cos(angle);
+    const y = RADAR_CENTER_Y + (RADAR_RADIUS + 24) * Math.sin(angle);
     const cos = Math.cos(angle);
     const anchor = Math.abs(cos) < 0.3 ? 'middle' : cos > 0 ? 'start' : 'end';
-    return { x, y: y + 4, anchor };
+    return { x, y: y + 5, anchor };
   };
   return (
-    <svg className="radar-chart" viewBox="0 0 370 248" role="img" aria-label="能力结构雷达图：我的水平与团队平均对照">
+    <svg className="radar-chart" viewBox="0 0 460 380" role="img" aria-label="能力结构雷达图：我的水平与团队平均对照">
       {[1, 2, 3, 4, 5].map((level) => (
         <polygon
           key={level}
@@ -90,24 +90,20 @@ const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
             const point = radarPoint(index, axes.length, level);
             return `${point.x},${point.y}`;
           }).join(' ')}
-          fill={level === RADAR_LEVELS ? '#fbfaff' : 'none'}
-          stroke={level === RADAR_LEVELS ? '#dfe3f0' : '#eaedf6'}
-          strokeWidth={1}
+          fill={level === RADAR_LEVELS ? '#fdfdff' : 'none'}
+          stroke={level === RADAR_LEVELS ? '#d7def2' : '#e9edf8'}
+          strokeWidth={level === RADAR_LEVELS ? 1.4 : 1}
         />
       ))}
       {axes.map((axis, index) => {
         const point = radarPoint(index, axes.length, RADAR_LEVELS);
-        return <line key={axis.name} x1={RADAR_CENTER_X} y1={RADAR_CENTER_Y} x2={point.x} y2={point.y} stroke="#eaedf6" strokeWidth={1} />;
+        return <line key={axis.name} x1={RADAR_CENTER_X} y1={RADAR_CENTER_Y} x2={point.x} y2={point.y} stroke="#e9edf8" strokeWidth={1} />;
       })}
-      <polygon points={radarPolygon(axes, 'target')} fill="rgba(87, 144, 239, .10)" stroke="#5790ef" strokeWidth={2} strokeLinejoin="round" strokeDasharray="6 4" />
-      <polygon points={radarPolygon(axes, 'current')} fill="rgba(101, 88, 232, .16)" stroke="#6558e8" strokeWidth={2.5} strokeLinejoin="round" />
-      {axes.map((axis, index) => {
-        const point = radarPoint(index, axes.length, axis.target);
-        return <circle key={`${axis.name}-team`} cx={point.x} cy={point.y} r={3} fill="#5790ef" stroke="#fff" strokeWidth={1.5} />;
-      })}
+      <polygon points={radarPolygon(axes, 'target')} fill="rgba(74, 125, 240, .15)" stroke="#4a7df0" strokeWidth={2.5} strokeLinejoin="round" />
+      <polygon points={radarPolygon(axes, 'current')} fill="rgba(124, 77, 255, .24)" stroke="#7c4dff" strokeWidth={2.5} strokeLinejoin="round" />
       {axes.map((axis, index) => {
         const point = radarPoint(index, axes.length, axis.current);
-        return <circle key={`${axis.name}-dot`} cx={point.x} cy={point.y} r={3.5} fill="#6558e8" stroke="#fff" strokeWidth={1.5} />;
+        return <circle key={`${axis.name}-dot`} cx={point.x} cy={point.y} r={4} fill="#7c4dff" stroke="#fff" strokeWidth={1.5} />;
       })}
       {axes.map((axis, index) => {
         const label = labelPoint(index);
@@ -117,11 +113,10 @@ const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
             x={label.x}
             y={label.y}
             textAnchor={label.anchor}
-            fontSize={11}
-            fill="#5b6472"
+            fontSize={14}
+            fill="#4b5563"
           >
             {axis.name}
-            {axis.fromBaseline ? '*' : ''}
           </text>
         );
       })}
@@ -323,8 +318,12 @@ const OverviewPage = () => {
     y: yFor(item.total),
     event: item,
   }));
-  const linePath = growthCurvePath(growthPoints);
-  const areaPath = growthPoints.length ? `${linePath} L ${growthPoints[growthPoints.length - 1].x} ${GROWTH_CHART_BOTTOM} L ${growthPoints[0].x} ${GROWTH_CHART_BOTTOM} Z` : '';
+  // 平台期去点：累计数没有变化的中间点不渲染（保留首尾），无新技能的时间段呈现为一条直线。
+  const chartGrowthPoints: GrowthPoint[] = growthPoints.filter((point, index) =>
+    index === 0 || index === growthPoints.length - 1 || point.event.total !== growthPoints[index - 1].event.total,
+  );
+  const linePath = growthCurvePath(chartGrowthPoints);
+  const areaPath = chartGrowthPoints.length ? `${linePath} L ${chartGrowthPoints[chartGrowthPoints.length - 1].x} ${GROWTH_CHART_BOTTOM} L ${chartGrowthPoints[0].x} ${GROWTH_CHART_BOTTOM} Z` : '';
 
   const handleChannelChange = (next: ChannelKey): void => {
     setChannel(next);
@@ -377,12 +376,9 @@ const OverviewPage = () => {
           <RadarChart axes={abilityStructure.axes} />
           {abilityStructure.axes.length >= 3 && (
             <div className="chart-legend">
-              <span><i className="legend-purple"></i>我的水平{abilityStructure.heldLevelCode ? `（${abilityStructure.heldLevelCode} 起）` : ''}</span>
-              <span><i className="legend-blue"></i>团队平均{abilityStructure.teamLabel ? `（${abilityStructure.teamLabel}）` : ''}</span>
+              <span><i className="legend-purple"></i>我的水平</span>
+              <span><i className="legend-blue"></i>团队平均</span>
             </div>
-          )}
-          {abilityStructure.axes.some(axis => axis.fromBaseline) && (
-            <p className="radar-footnote">* 该技能当前等级按职称基线（入门理解 L1）计</p>
           )}
         </section>
         <section className="panel maturity-panel">
@@ -585,7 +581,7 @@ const OverviewPage = () => {
                 d={linePath}
               ></path>
               <g>
-                {growthPoints.map((point) => (
+                {chartGrowthPoints.map((point) => (
                   <g
                     key={point.event.date}
                     className={`growth-point ${point.event.date === effectiveSelectedDate ? 'is-selected' : ''}`}
