@@ -331,8 +331,8 @@ export interface CareerNodeSkill {
   name: string;
   current: number;
   target: number;
-  /** current 的来源：cert 有效认证；title-covered 职称覆盖；title-baseline 职称基线（下一层新技能的入门理解） */
-  source?: 'cert' | 'title-covered' | 'title-baseline';
+  /** current 的来源：cert 有效认证；title-covered 职称覆盖；title-baseline 职称基线（下一层新技能的入门理解）；skill-covered 认证覆盖（按实际掌握技能核算达标） */
+  source?: 'cert' | 'title-covered' | 'title-baseline' | 'skill-covered';
 }
 
 export interface CareerNode {

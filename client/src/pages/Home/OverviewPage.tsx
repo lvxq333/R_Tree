@@ -423,7 +423,7 @@ const OverviewPage = () => {
           {careerNodes.map((node, index) => {
             const classes: string[] = ['career-node'];
             if (node.achieved) classes.push('reached');
-            if (node.achieved && node.meta === '当前岗位') classes.push('current');
+            if (node.achieved && (node.meta === '当前岗位' || node.meta === '当前职级')) classes.push('current');
             if (node.isNext && !node.achieved) classes.push('next-stop');
             if (node.id === selectedNode.id) classes.push('selected');
             return (
@@ -447,9 +447,11 @@ const OverviewPage = () => {
               const category = COMMON_SKILL_NAMES.has(skill.name) ? '通用技能' : '专业技能';
               const sourceText = skill.source === 'title-covered'
                 ? ' · 职称覆盖'
-                : skill.source === 'title-baseline'
-                  ? ' · 职称基线'
-                  : '';
+                : skill.source === 'skill-covered'
+                  ? ' · 认证覆盖'
+                  : skill.source === 'title-baseline'
+                    ? ' · 职称基线'
+                    : '';
               return (
                 <div key={skill.name} className={`node-skill ${met ? 'met' : ''}`}>
                   <div><b>{skill.name}</b><small>{category} · 当前 L{skill.current}{sourceText} · 要求 L{skill.target}</small></div>

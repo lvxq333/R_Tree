@@ -37,7 +37,7 @@ import type {
 } from '@shared/api.interface';
 
 const GAP_SOURCES: string[] = ['career', 'okr', 'current'];
-/** 技术序列：职称在这些序列之间平级互认 */
+/** 技术序列：管理通道取这些序列的最高职级做平移基准 */
 const TECH_TRACKS: string[] = ['software', 'platform', 'ai'];
 
 const GAP_SOURCE_LABELS: Record<GapSource, string> = {
@@ -80,28 +80,67 @@ export class GrowthService {
     return levels;
   }
 
-  /** 已持有职称：序列 → 最高层级，以及该结果是否由平级互认得出。 */
-  private async heldLevelsByTrack(employeeSlug: string): Promise<Map<string, { level: number; inherited: boolean }>> {
-    const rows = await this.db
+  /**
+   * 各序列职级核算（不做序列间互认）：
+   * 1. 职称：员工在该序列实际持有的职称层级；
+   * 2. 技能：按该序列各层全部能力要求逐层核算，全部由有效认证满足的最高层。
+   * 两者取高作为该序列的职级，并记录来源（title / skills / none）。
+   */
+  private async heldLevelsByTrack(employeeSlug: string): Promise<{
+    levelByTrack: Map<string, number>;
+    sourceByTrack: Map<string, 'title' | 'skills' | 'none'>;
+  }> {
+    const titleRows = await this.db
       .select({ trackSlug: mvpTitleLevel.trackSlug, levelOrder: mvpTitleLevel.levelOrder })
       .from(mvpEmployeeTitle)
       .innerJoin(mvpTitleLevel, eq(mvpTitleLevel.id, mvpEmployeeTitle.titleLevelId))
       .where(and(eq(mvpEmployeeTitle.employeeSlug, employeeSlug), eq(mvpEmployeeTitle.status, 'active')));
-    const actual = new Map<string, number>();
-    for (const row of rows) {
-      const held = actual.get(row.trackSlug) ?? 0;
-      if (row.levelOrder > held) actual.set(row.trackSlug, row.levelOrder);
+    const titleLevel = new Map<string, number>();
+    for (const row of titleRows) {
+      const held = titleLevel.get(row.trackSlug) ?? 0;
+      if (row.levelOrder > held) titleLevel.set(row.trackSlug, row.levelOrder);
     }
-    // 技术序列之间职称平级互认：换序列后节点按同层级职称展示。
-    const techMax = Math.max(0, ...TECH_TRACKS.map(track => actual.get(track) ?? 0));
-    const result = new Map<string, { level: number; inherited: boolean }>();
-    for (const [track, level] of actual) result.set(track, { level, inherited: false });
-    if (techMax > 0) {
-      for (const track of TECH_TRACKS) {
-        if (!result.has(track)) result.set(track, { level: techMax, inherited: true });
+
+    const levelRows = await this.db
+      .select({ id: mvpTitleLevel.id, trackSlug: mvpTitleLevel.trackSlug, levelOrder: mvpTitleLevel.levelOrder })
+      .from(mvpTitleLevel);
+    const reqRows = await this.db
+      .select({ titleLevelId: mvpTitleRequirement.titleLevelId, skillSlug: mvpTitleRequirement.skillSlug, requiredLevel: mvpTitleRequirement.requiredLevel })
+      .from(mvpTitleRequirement);
+    const reqsByLevelId = new Map<string, { skillSlug: string; requiredLevel: number }[]>();
+    for (const row of reqRows) {
+      const list = reqsByLevelId.get(row.titleLevelId) ?? [];
+      list.push({ skillSlug: row.skillSlug, requiredLevel: row.requiredLevel });
+      reqsByLevelId.set(row.titleLevelId, list);
+    }
+
+    const rawLevels = await this.activeSkillLevels(employeeSlug);
+    const tracks = [...new Set([...titleLevel.keys(), ...levelRows.map(row => row.trackSlug)])];
+    const skillLevel = new Map<string, number>();
+    for (const track of tracks) {
+      const levels = levelRows
+        .filter(row => row.trackSlug === track)
+        .sort((a, b) => a.levelOrder - b.levelOrder);
+      let reached = 0;
+      for (const level of levels) {
+        const reqs = reqsByLevelId.get(level.id) ?? [];
+        const allMet = reqs.length > 0 && reqs.every(req => (rawLevels.get(req.skillSlug) ?? 0) >= req.requiredLevel);
+        if (!allMet) break;
+        reached = level.levelOrder;
       }
+      skillLevel.set(track, reached);
     }
-    return result;
+
+    const levelByTrack = new Map<string, number>();
+    const sourceByTrack = new Map<string, 'title' | 'skills' | 'none'>();
+    for (const track of tracks) {
+      const byTitle = titleLevel.get(track) ?? 0;
+      const bySkill = skillLevel.get(track) ?? 0;
+      const level = Math.max(byTitle, bySkill);
+      levelByTrack.set(track, level);
+      sourceByTrack.set(track, level === 0 ? 'none' : byTitle >= bySkill ? 'title' : 'skills');
+    }
+    return { levelByTrack, sourceByTrack };
   }
 
   async getCareer(): Promise<CareerResponse> {
@@ -118,7 +157,7 @@ export class GrowthService {
     const skills = await this.db.select().from(skill);
     const rawLevels = await this.activeSkillLevels(employeeSlug);
     const effective = await this.judging.effectiveLevelsForCurrentEmployee();
-    const heldByTrack = await this.heldLevelsByTrack(employeeSlug);
+    const { levelByTrack, sourceByTrack } = await this.heldLevelsByTrack(employeeSlug);
 
     const skillNameBySlug = new Map<string, string>(
       skills.map((row: typeof skill.$inferSelect) => [row.slug, row.name]),
@@ -126,24 +165,20 @@ export class GrowthService {
 
     const skillsByNode = new Map<string, CareerNodeSkill[]>();
     const achievedByNode = new Map<string, boolean>();
-    const inheritedByNode = new Map<string, boolean>();
     for (const node of nodes) {
       const nodeLevel = Number((node.code ?? '').replace(/^T/, '').replace(/^M/, ''));
-      const held = heldByTrack.get(node.sequenceSlug);
-      const heldLevel = held?.level ?? 0;
-      const inherited = held?.inherited ?? false;
+      const heldLevel = levelByTrack.get(node.sequenceSlug) ?? 0;
       const achieved = Number.isInteger(nodeLevel) && nodeLevel > 0 && nodeLevel <= heldLevel;
       achievedByNode.set(node.slug, achieved);
-      inheritedByNode.set(node.slug, inherited);
       const list: CareerNodeSkill[] = [];
       for (const nodeSkill of nodeSkills.filter(row => row.nodeSlug === node.slug)) {
         const raw = rawLevels.get(nodeSkill.skillSlug) ?? 0;
         let current = raw;
         let source: CareerNodeSkill['source'] = 'cert';
         if (achieved) {
-          // 职称已覆盖的层：技能明细按职称视为已满足，避免「高级工程师却显示 T1 全 Gap」。
+          // 已达成的层：技能明细按职称/认证覆盖视为已满足，避免「高级工程师却显示 T1 全 Gap」。
           current = Math.max(raw, nodeSkill.requiredLevel);
-          source = 'title-covered';
+          source = sourceByTrack.get(node.sequenceSlug) === 'skills' ? 'skill-covered' : 'title-covered';
         } else if (Number.isInteger(nodeLevel) && heldLevel > 0 && nodeLevel === heldLevel + 1) {
           // 紧邻下一层：用有效等级（职称覆盖 + 职称基线），真实反映高级工程师的既有能力。
           const eff = effective.levels.get(nodeSkill.skillSlug) ?? 0;
@@ -164,18 +199,18 @@ export class GrowthService {
     for (const node of nodes) {
       const nodeSkillsForNode = skillsByNode.get(node.slug) ?? [];
       const achieved = achievedByNode.get(node.slug) ?? false;
-      const inherited = inheritedByNode.get(node.slug) ?? false;
       const coverage = Math.round(nodeSkillsForNode.filter(item => item.current >= item.target).length / Math.max(1, nodeSkillsForNode.length) * 100);
+      const bySkills = sourceByTrack.get(node.sequenceSlug) === 'skills';
       const view: CareerNode = {
         id: node.slug,
         code: node.code ?? '',
         title: node.title ?? '',
         meta: '岗位能力要求',
-        state: achieved ? (inherited ? '序列间同层职称互认' : '当前职称已达成') : '岗位能力参考',
+        state: achieved ? (bySkills ? '技能认证已达标' : '当前职称已达成') : '岗位能力参考',
         coverage,
         description: achieved
-          ? inherited
-            ? '已持有职称在其他技术序列平级互认，该层能力要求按同层级视为已满足。'
+          ? bySkills
+            ? '该层级能力要求已全部由有效认证满足，按实际掌握技能核算达标。'
             : '该层级职称已持有，能力要求按职称覆盖视为已满足。'
           : '根据当前员工的有效认证技能对照岗位要求。',
         skills: nodeSkillsForNode,
@@ -187,13 +222,10 @@ export class GrowthService {
       nodesBySequence.set(node.sequenceSlug, list);
     }
 
-    // 每条技术序列：已达成层 → 已达成 / 当前岗位（偏好序列）/ 同层互认（互认序列）；
-    // 最近未达成层 → 推荐下一站；更远的未达成层 → 远期方向 / 长期方向。
     const preferred = this.judging.preferredTrackForCurrentEmployee();
     for (const [trackSlug, trackNodes] of nodesBySequence) {
-      const held = heldByTrack.get(trackSlug);
-      const heldLevel = held?.level ?? 0;
-      if (heldLevel === 0) continue;
+      if (trackSlug === 'management') continue;
+      const heldLevel = levelByTrack.get(trackSlug) ?? 0;
       const pending = trackNodes.filter(node => !node.achieved);
       pending.forEach((node, index) => {
         if (index === 0) {
@@ -209,13 +241,60 @@ export class GrowthService {
       for (const node of trackNodes) {
         const nodeLevel = Number((node.code ?? '').replace(/^T/, ''));
         if (!node.achieved || !Number.isInteger(nodeLevel)) continue;
-        if (nodeLevel === heldLevel) {
-          node.meta = trackSlug === preferred ? '当前岗位' : '同层互认';
-        } else {
-          node.meta = '已达成';
-        }
+        node.meta = nodeLevel === heldLevel && trackSlug === preferred ? '当前岗位' : '已达成';
       }
     }
+
+    // 管理通道：取各序列最高职级做平移基准。已达成的职级沿用该技术序列的职称，
+    // 未达成的职级展示管理通道自身职称；能力要求按基准职级覆盖。
+    const titleLevelRows = await this.db
+      .select({ trackSlug: mvpTitleLevel.trackSlug, levelOrder: mvpTitleLevel.levelOrder, name: mvpTitleLevel.name })
+      .from(mvpTitleLevel);
+    const trackLevelTitles = new Map(
+      titleLevelRows.map(row => [`${row.trackSlug}:${row.levelOrder}`, row.name]),
+    );
+    const mgmtNodes = nodesBySequence.get('management') ?? [];
+    const candidates = [...levelByTrack.entries()]
+      .filter(([, level]) => level > 0)
+      .map(([track, level]) => ({ track, level, byTitle: sourceByTrack.get(track) === 'title' }))
+      .sort((a, b) => b.level - a.level || Number(b.byTitle) - Number(a.byTitle) || Number(a.track === preferred) - Number(b.track === preferred));
+    const baseline = candidates[0];
+    mgmtNodes.forEach((node, index) => {
+      const ordinal = index + 1;
+      const achieved = baseline !== undefined && ordinal <= baseline.level;
+      node.achieved = achieved;
+      if (baseline !== undefined) {
+        const baselineTitle = trackLevelTitles.get(`${baseline.track}:${ordinal}`);
+        if (achieved && baselineTitle) node.title = baselineTitle;
+      }
+      const nodeSkillsForNode = skillsByNode.get(node.id) ?? [];
+      node.coverage = achieved
+        ? 100
+        : Math.round(nodeSkillsForNode.filter(item => item.current >= item.target).length / Math.max(1, nodeSkillsForNode.length) * 100);
+      if (achieved) {
+        node.state = '按技术职级平移';
+        node.description = baseline
+          ? `沿用${this.trackLabel(baseline.track)}序列第 ${ordinal} 层职级（${node.title}）；能力要求按该职级视为已满足。`
+          : '该职级按技术序列最高职级平移。';
+        node.meta = ordinal === baseline?.level ? '当前职级' : '已达成';
+        node.skills = (node.skills ?? []).map(skill => ({
+          ...skill,
+          current: Math.max(skill.current, skill.target),
+          source: 'title-covered' as const,
+        }));
+      } else {
+        const pendingIndex = mgmtNodes.filter(item => !item.achieved).indexOf(node);
+        if (pendingIndex === 0) {
+          node.meta = '推荐下一站';
+          node.isNext = true;
+          node.state = '推荐下一站';
+        } else if (pendingIndex === mgmtNodes.filter(item => !item.achieved).length - 1) {
+          node.meta = '长期方向';
+        } else {
+          node.meta = '远期方向';
+        }
+      }
+    });
 
     const sequenceViews: CareerSequenceView[] = sequences.map(
       (sequence: typeof careerSequence.$inferSelect): CareerSequenceView => ({
@@ -227,6 +306,10 @@ export class GrowthService {
     );
 
     return { sequences: sequenceViews, preferredTrack: preferred };
+  }
+
+  private trackLabel(track: string): string {
+    return ({ software: '软件开发', platform: '平台工程', ai: '数据与 AI', management: '管理' })[track] ?? track;
   }
 
   async getEvents(range: GrowthRange): Promise<GrowthEventsResponse> {
