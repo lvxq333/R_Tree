@@ -17,6 +17,7 @@
     "test:assessment": "npm run build:server && node scripts/test-assessment.mjs",
     "db:migrate:facts": "node scripts/migrate-facts.mjs",
     "db:migrate:mvp": "node scripts/migrate-mvp.mjs",
+    "docs:standards": "node scripts/render-standards-draft.mjs",
     "db:seed:facts": "node scripts/seed-facts.mjs",
     "db:start": "node scripts/local-db.mjs start",
     "db:restore": "node scripts/restore-db.mjs",
