@@ -55,7 +55,11 @@ npm run dev
 
 ## 迁移范围
 
-- `npm run db:migrate:mvp` 应用 MVP 表结构：`006` 建 27 张 `mvp_` 表（幂等），`007` 落地已确认的决策修正（职称层级 1~6、申诉判定主体 `decided_kind`、标准版本 `source` 与发布人），`008` 把三序列 T1 层级名改为按序列区分，`009` 移除不在三条技术序列内的 7 名演示员工（含账号与组织关系）。四个文件自带事务，可重复执行；恢复数据库后需要重跑一次。
+- `npm run db:migrate:mvp` 应用 MVP 表结构：`006` 建 27 张 `mvp_` 表（幂等），`007` 落地已确认的决策修正（职称层级 1~6、申诉判定主体 `decided_kind`、标准版本 `source` 与发布人），`008` 把三序列 T1 层级名改为按序列区分，`009` 移除不在三条技术序列内的 7 名演示员工（含账号与组织关系），`010` 支持历史等级迁移（`source_application_slug` 可空、新增 `source`、`certified_via` 增加 `migrated`、修正种子臆造的技能 slug）。五个文件自带事务，可重复执行；恢复数据库后需要重跑一次。
+- `npm run db:seed:mvp` 一键重建 MVP 数据：依次跑迁移、企业员工种子、标准种子、历史等级映射。新机器或恢复库之后用这一条即可。
+- `npm run db:schema:mvp` 从数据库反向生成 `server/database/mvp-schema.ts`（34 张表 / 370 列），改了迁移后重新生成，不要手改这个文件。
+- `npm run db:seed:standards` 把 `server/database/seed/standards-draft.json` 落成标准数据：21 个子能力 × 5 级锚点、3 序列 × 4 层 × 48 条要求、246 行技能子能力矩阵，并按「专家编写 → 负责人审核 → 管理员发布」三级发布 `v2026-q4` 并写快照。已有申请或职称引用该版本层级时会拒绝执行，改用新版本号。
+- `npm run db:migrate:legacy-skills` 把旧 `employee_skill` 的已认证等级映射进 `mvp_employee_skill` / `mvp_employee_competency`，来源标 `migrated`；员工或技能已不存在的旧记录只留在旧表，不写入新表。
 - 替换妙搭 Vite/TypeScript preset、应用容器、日志、axios 包装和数据库注入。
 - API 统一校验本机会话；原有 NeedLogin 仍负责本机访问限制，不作为角色或数据范围授权。
 - 保留已有页面与业务接口、数据库类型和演示场景。

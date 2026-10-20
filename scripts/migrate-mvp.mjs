@@ -3,12 +3,14 @@ import postgres from 'postgres';
 import { readFile } from 'node:fs/promises';
 
 // MVP 表结构迁移：006 建表 + 007 决策落地 + 008 三序列层级名 + 009 移除非技术序列员工
-// 四个文件都幂等且自带事务控制，因此不走外层事务，用 advisory lock 串行化。
+// + 010 历史迁移支持
+// 五个文件都幂等且自带事务控制，因此不走外层事务，用 advisory lock 串行化。
 const FILES = [
   '006-mvp-core-schema.sql',
   '007-mvp-decisions.sql',
   '008-title-level-names.sql',
   '009-remove-non-tech-employees.sql',
+  '010-legacy-migration-support.sql',
 ];
 const LOCK_KEY = 17019007;
 

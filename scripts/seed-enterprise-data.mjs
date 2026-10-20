@@ -87,6 +87,10 @@ const ORG_RELATIONS = [
   { employee: 'lin-xiao-de', relationType: 'manager', target: 'gao-feng', domain: null },
   { employee: 'he-jun', relationType: 'manager', target: 'gao-feng', domain: null },
 
+  // 旧演示员工 lin-xiao（林晓）保留在数据工程组，补主管关系，
+  // 否则他在 MVP 里没有主管，L3 以上审批会卡在「待分配」
+  { employee: 'lin-xiao', relationType: 'manager', target: 'gao-feng', domain: null },
+
   // 数据治理组：罗燕(数据治理专家) 是组长，宋伟 是组员
   { employee: 'song-wei', relationType: 'manager', target: 'luo-yan', domain: null },
 
@@ -96,35 +100,35 @@ const ORG_RELATIONS = [
 
   // ===== 领域专家关系 =====
   // Java 领域专家：李娜
-  { employee: 'zhang-wei', relationType: 'expert', target: 'li-na', domain: 'java' },
-  { employee: 'wang-fang', relationType: 'expert', target: 'li-na', domain: 'java' },
+  { employee: 'zhang-wei', relationType: 'expert', target: 'li-na', domain: 'software' },
+  { employee: 'wang-fang', relationType: 'expert', target: 'li-na', domain: 'software' },
 
   // 前端领域专家：陈静
-  { employee: 'liu-yang', relationType: 'expert', target: 'chen-jing', domain: 'frontend' },
-  { employee: 'zhao-lei', relationType: 'expert', target: 'chen-jing', domain: 'frontend' },
+  { employee: 'liu-yang', relationType: 'expert', target: 'chen-jing', domain: 'software' },
+  { employee: 'zhao-lei', relationType: 'expert', target: 'chen-jing', domain: 'software' },
 
   // Python 领域专家：孙强
-  { employee: 'zhou-min', relationType: 'expert', target: 'sun-qiang', domain: 'python' },
-  { employee: 'wu-tao', relationType: 'expert', target: 'sun-qiang', domain: 'python' },
+  { employee: 'zhou-min', relationType: 'expert', target: 'sun-qiang', domain: 'software' },
+  { employee: 'wu-tao', relationType: 'expert', target: 'sun-qiang', domain: 'software' },
 
   // 测试领域专家：郑华
-  { employee: 'wang-jun', relationType: 'expert', target: 'zheng-hua', domain: 'testing' },
-  { employee: 'li-xue', relationType: 'expert', target: 'zheng-hua', domain: 'testing' },
+  { employee: 'wang-jun', relationType: 'expert', target: 'zheng-hua', domain: 'software' },
+  { employee: 'li-xue', relationType: 'expert', target: 'zheng-hua', domain: 'software' },
 
   // 运维领域专家：张鹏
-  { employee: 'liu-wei', relationType: 'expert', target: 'zhang-peng', domain: 'devops' },
-  { employee: 'chen-hao', relationType: 'expert', target: 'zhang-peng', domain: 'devops' },
+  { employee: 'liu-wei', relationType: 'expert', target: 'zhang-peng', domain: 'platform' },
+  { employee: 'chen-hao', relationType: 'expert', target: 'zhang-peng', domain: 'platform' },
 
   // 数据分析领域专家：杨丽
-  { employee: 'huang-ming', relationType: 'expert', target: 'yang-li', domain: 'data-analysis' },
-  { employee: 'xu-ting', relationType: 'expert', target: 'yang-li', domain: 'data-analysis' },
+  { employee: 'huang-ming', relationType: 'expert', target: 'yang-li', domain: 'ai' },
+  { employee: 'xu-ting', relationType: 'expert', target: 'yang-li', domain: 'ai' },
 
   // 数据工程领域专家：高峰
-  { employee: 'lin-xiao-de', relationType: 'expert', target: 'gao-feng', domain: 'data-engineering' },
-  { employee: 'he-jun', relationType: 'expert', target: 'gao-feng', domain: 'data-engineering' },
+  { employee: 'lin-xiao-de', relationType: 'expert', target: 'gao-feng', domain: 'ai' },
+  { employee: 'he-jun', relationType: 'expert', target: 'gao-feng', domain: 'ai' },
 
   // 数据治理领域专家：罗燕
-  { employee: 'song-wei', relationType: 'expert', target: 'luo-yan', domain: 'data-governance' },
+  { employee: 'song-wei', relationType: 'expert', target: 'luo-yan', domain: 'ai' },
 
   // 销售 / 产品领域的专家关系随业务与管理部一并移除
 ];
@@ -153,27 +157,22 @@ const ACCOUNTS = EMPLOYEES.map(emp => ({
 // 4. 初始技能等级（用于测试认证流程）
 // ============================================================
 
+// 技能 slug 必须与 skill 表一致（skill_slug 没有外键，写错不会报错，只会产生脏数据）。
+// 原来这里写的 skill-java / skill-frontend / skill-python / skill-data-analysis /
+// skill-data-engineering 都不存在，已由 010 迁移修正。
+// 前端与 Python 在现有 81 项技能里没有对应项，因此不预置认证。
 const INITIAL_SKILLS = [
-  // 张伟（Java 高级工程师）：已有 Java L2
-  { employee: 'zhang-wei', skill: 'skill-java', level: 2, certifiedAt: '2025-06-15' },
+  // 张伟（Java 高级工程师）：已有 Java 工程化 L2
+  { employee: 'zhang-wei', skill: 'java-go-eng', level: 2, certifiedAt: '2025-06-15' },
 
-  // 李娜（Java 技术专家）：已有 Java L4
-  { employee: 'li-na', skill: 'skill-java', level: 4, certifiedAt: '2024-03-20' },
-
-  // 刘洋（前端高级工程师）：已有前端 L2
-  { employee: 'liu-yang', skill: 'skill-frontend', level: 2, certifiedAt: '2025-08-10' },
-
-  // 陈静（前端技术专家）：已有前端 L4
-  { employee: 'chen-jing', skill: 'skill-frontend', level: 4, certifiedAt: '2024-01-15' },
-
-  // 孙强（Python 技术专家）：已有 Python L4
-  { employee: 'sun-qiang', skill: 'skill-python', level: 4, certifiedAt: '2024-05-08' },
+  // 李娜（Java 技术专家）：已有 Java 工程化 L4
+  { employee: 'li-na', skill: 'java-go-eng', level: 4, certifiedAt: '2024-03-20' },
 
   // 杨丽（数据分析专家）：已有数据分析 L4
-  { employee: 'yang-li', skill: 'skill-data-analysis', level: 4, certifiedAt: '2024-02-14' },
+  { employee: 'yang-li', skill: 'data-analysis', level: 4, certifiedAt: '2024-02-14' },
 
-  // 高峰（数据工程专家）：已有数据工程 L4
-  { employee: 'gao-feng', skill: 'skill-data-engineering', level: 4, certifiedAt: '2024-04-22' },
+  // 高峰（数据工程专家）：已有数据处理 L4
+  { employee: 'gao-feng', skill: 'data-processing', level: 4, certifiedAt: '2024-04-22' },
 ];
 
 // ============================================================
@@ -203,7 +202,10 @@ function generateSQL() {
   statements.push(`DELETE FROM mvp_fact_change WHERE employee_id IN (SELECT id FROM employee WHERE slug IN (${newEmployeeSlugs}));`);
   statements.push(`DELETE FROM mvp_fact WHERE employee_id IN (SELECT id FROM employee WHERE slug IN (${newEmployeeSlugs}));`);
   statements.push(`DELETE FROM mvp_fact_employee WHERE employee_id IN (SELECT id FROM employee WHERE slug IN (${newEmployeeSlugs}));`);
-  statements.push(`DELETE FROM mvp_org_relation WHERE employee_slug IN (${newEmployeeSlugs}) OR target_slug IN (${newEmployeeSlugs});`);
+  // lin-xiao 是旧演示员工，不在 EMPLOYEES 里，但他的关系也要重建，避免重复累积；
+  // 只清关系，不删员工本人
+  const relationCleanupSlugs = `${newEmployeeSlugs},'lin-xiao'`;
+  statements.push(`DELETE FROM mvp_org_relation WHERE employee_slug IN (${relationCleanupSlugs}) OR target_slug IN (${relationCleanupSlugs});`);
   statements.push(`DELETE FROM mvp_employee_skill WHERE employee_slug IN (${newEmployeeSlugs});`);
   statements.push(`DELETE FROM app_session WHERE account_id IN (SELECT a.id FROM app_account a JOIN employee e ON e.id=a.employee_id WHERE e.slug IN (${newEmployeeSlugs}));`);
   statements.push(`DELETE FROM app_external_identity WHERE account_id IN (SELECT a.id FROM app_account a JOIN employee e ON e.id=a.employee_id WHERE e.slug IN (${newEmployeeSlugs}));`);
@@ -263,8 +265,8 @@ VALUES ('${id}', '${slug}', '${rel.employee}', '${rel.relationType}', '${rel.tar
   for (const skill of INITIAL_SKILLS) {
     const id = randomUUID();
     const slug = `${skill.employee}-${skill.skill}-l${skill.level}`;
-    statements.push(`INSERT INTO mvp_employee_skill(id, slug, employee_slug, skill_slug, level, certified_at, source_application_slug, status, last_used_at, review_due_at, created_at, updated_at)
-VALUES ('${id}', '${slug}', '${skill.employee}', '${skill.skill}', ${skill.level}, '${skill.certifiedAt}'::timestamptz, 'initial-seed', 'active', now(), NULL, now(), now());`);
+    statements.push(`INSERT INTO mvp_employee_skill(id, slug, employee_slug, skill_slug, level, certified_at, source, source_application_slug, status, last_used_at, review_due_at, created_at, updated_at)
+VALUES ('${id}', '${slug}', '${skill.employee}', '${skill.skill}', ${skill.level}, '${skill.certifiedAt}'::timestamptz, 'initial-seed', 'initial-seed', 'active', now(), NULL, now(), now());`);
   }
   statements.push('');
 
