@@ -10,7 +10,7 @@
  * 运行方式：node scripts/seed-enterprise-data.mjs
  */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { scryptSync } from 'node:crypto';
 
 // ============================================================
@@ -140,7 +140,9 @@ const ORG_RELATIONS = [
 const DEFAULT_PASSWORD = 'SkillTree@2026';
 
 function hashPassword(password) {
-  const salt = 'skilltree-salt-2026'; // 固定 salt，仅用于演示
+  // salt 必须是 16 字节随机值的 hex（32 位小写 hex），与 auth.service 的校验 `/^[a-f0-9]{32}$/` 一致。
+  // 早期这里写死 'skilltree-salt-2026'（19 位、非 hex），登录时会被判定为非法 salt 而一律返回「账号或密码错误」。
+  const salt = randomBytes(16).toString('hex');
   const derived = scryptSync(password, salt, 64);
   return `scrypt:${salt}:${derived.toString('hex')}`;
 }

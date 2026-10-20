@@ -11,6 +11,7 @@ const FILES = [
   '008-title-level-names.sql',
   '009-remove-non-tech-employees.sql',
   '010-legacy-migration-support.sql',
+  '011-clean-orphan-employee-refs.sql',
 ];
 const LOCK_KEY = 17019007;
 

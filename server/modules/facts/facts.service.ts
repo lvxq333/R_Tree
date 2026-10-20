@@ -63,19 +63,21 @@ export class FactsService implements OnModuleInit, OnModuleDestroy {
         WHERE mvp_fact_employee.basic_info IS DISTINCT FROM excluded.basic_info`);
       const ids = new Map(employees.map(row => [row.slug, row.id]));
       const sources: SourceFact[] = [];
-      const employeeId = (slug: string) => {
+      const employeeId = (slug: string, table: string) => {
         const id = ids.get(slug);
-        if (!id) throw new Error('事实源存在无法映射的员工标识');
+        // 员工被删除但旧表仍留有其行时，这里会命中。报错要带表名和 slug，
+        // 否则只知道「无法映射」无法定位；可用 npm run db:migrate:mvp 清理孤儿数据。
+        if (!id) throw new Error(`${table} 引用的员工 slug「${slug}」不存在（孤儿数据），请执行 npm run db:migrate:mvp 清理`);
         return id;
       };
       for (const row of await tx.select().from(employeeProject)) sources.push({
-        employeeId: employeeId(row.employeeSlug), sourceTable: 'employee_project', sourceKey: row.id, kind: 'project',
+        employeeId: employeeId(row.employeeSlug, 'employee_project'), sourceTable: 'employee_project', sourceKey: row.id, kind: 'project',
         title: row.title ?? '未命名项目经历', occurrenceLabel: row.timeRange,
         content: { responsibility: row.responsibility, actions: row.actions, outcome: row.outcome, impact: row.impact,
           contribution: row.contribution, skills: row.skills, originalVerification: row.verification },
       });
       for (const row of await tx.select().from(performanceRecord)) sources.push({
-        employeeId: employeeId(row.employeeSlug), sourceTable: 'performance_record', sourceKey: row.id, kind: 'performance',
+        employeeId: employeeId(row.employeeSlug, 'performance_record'), sourceTable: 'performance_record', sourceKey: row.id, kind: 'performance',
         title: `${row.period} 绩效记录`, occurrenceLabel: row.period, content: { rating: row.rating, summary: row.summary },
       });
       for (const row of await tx.select().from(employeeSkill)) {
@@ -86,7 +88,7 @@ export class FactsService implements OnModuleInit, OnModuleDestroy {
         evidence.forEach((item: unknown, index: number) => {
           if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('旧证据格式无效');
           const raw = item as Record<string, unknown>;
-          sources.push({ employeeId: employeeId(row.employeeSlug), sourceTable: 'employee_skill', sourceKey: `${row.id}:${index}`,
+          sources.push({ employeeId: employeeId(row.employeeSlug, 'employee_skill'), sourceTable: 'employee_skill', sourceKey: `${row.id}:${index}`,
             kind: 'legacy_evidence', title: typeof raw.title === 'string' ? raw.title : '历史证据', occurrenceLabel: null,
             // 保留原证据；不导入原认证等级、置信度或结论，避免循环举证。
             content: { evidence: raw, legacyRecordId: row.id, relatedSkillSlug: row.skillSlug, verification: 'unverified_legacy_import' },

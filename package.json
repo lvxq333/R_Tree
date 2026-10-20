@@ -29,6 +29,7 @@
     "db:stop": "node scripts/local-db.mjs stop",
     "db:migrate:auth": "node scripts/migrate-auth.mjs",
     "auth:create-user": "node scripts/create-local-account.mjs",
+    "auth:reset-passwords": "node scripts/reset-local-passwords.mjs",
     "validation:prepare": "node scripts/validation-demo.mjs prepare",
     "validation:serve": "node scripts/validation-demo.mjs serve",
     "test:candidates": "npm run build:server && node scripts/test-candidates.mjs",
