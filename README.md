@@ -13,6 +13,7 @@ cp .env.example .env
 npm install
 npm run db:start
 npm run db:restore
+npm run db:migrate:mvp
 npm run build
 npm start
 ```
@@ -54,6 +55,7 @@ npm run dev
 
 ## 迁移范围
 
+- `npm run db:migrate:mvp` 应用 MVP 表结构：`006` 建 27 张 `mvp_` 表（幂等），`007` 落地已确认的决策修正（职称层级 1~6、申诉判定主体 `decided_kind`、标准版本 `source` 与发布人）。两个文件自带事务，可重复执行。
 - 替换妙搭 Vite/TypeScript preset、应用容器、日志、axios 包装和数据库注入。
 - API 统一校验本机会话；原有 NeedLogin 仍负责本机访问限制，不作为角色或数据范围授权。
 - 保留已有页面与业务接口、数据库类型和演示场景。
