@@ -243,6 +243,12 @@ export class JudgingService {
     return { trackSlug: top.track_slug, levelOrder: top.level_order, levelCode: top.level_code, levelName: top.level_name };
   }
 
+  /** 当前员工的偏好序列（供概览等模块复用同一口径）。 */
+  preferredTrackForCurrentEmployee(): string | null {
+    const user = currentEmployee();
+    return this.preferredTrack(user.org, user.position);
+  }
+
   /**
    * 按部门与岗位推断所属技术序列。
    * 员工表没有序列字段（domain 只在 expert 关系上有值，覆盖不全），

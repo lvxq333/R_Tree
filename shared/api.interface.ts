@@ -342,6 +342,10 @@ export interface CareerNode {
   coverage: number;
   description: string;
   skills: CareerNodeSkill[];
+  /** 已持有该层或更高层职称：技能明细按职称覆盖显示为已满足 */
+  achieved: boolean;
+  /** 偏好序列中最近的未达成层（推荐下一站） */
+  isNext: boolean;
 }
 
 export interface CareerSequenceView {
@@ -383,6 +387,23 @@ export interface GapPoolItem {
 
 export interface GapListResponse {
   items: GapPoolItem[];
+}
+
+/** 针对 Gap 的行动建议：学习（课程/资源）、实践、导师反馈与可验证交付并重 */
+export interface GapAction {
+  id: string;
+  kind: 'course' | 'resource' | 'practice' | 'mentor';
+  badge: string;
+  title: string;
+  /** 对应的 Gap 条目 */
+  gapTitle: string;
+  detail: string;
+  effort: string;
+  actionLabel: string;
+}
+
+export interface GapActionsResponse {
+  items: GapAction[];
 }
 
 /* ========== IDP ========== */

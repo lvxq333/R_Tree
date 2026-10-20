@@ -27,6 +27,8 @@ try {
 
   let insertedSkills = 0;
   let insertedResources = 0;
+  let insertedTitles = 0;
+  let employeeCount = 0;
   await db.begin(async tx => {
     for (const item of JUDGING_SAMPLE_SKILLS) {
       const slug = `${item.employee}-${item.skill}-l${item.level}`;
@@ -36,6 +38,45 @@ try {
         ON CONFLICT (employee_slug, skill_slug, level) DO NOTHING
         RETURNING id`;
       insertedSkills += rows.length;
+    }
+
+    // 初始职称：按岗位职级映射（专家→T4、高级→T3、中级→T2、其余→T1），
+    // 序列按部门/岗位关键字推断（与 JudgingService.preferredTrack 同口径）。
+    // 员工的现有岗位职级视为已授予职称，判断层据此把低层级显示为 certified、
+    // 下一节点指向更高层，避免「高级工程师却显示 T2 未达标」的割裂。
+    const employees = await tx`SELECT slug, role, org, hire_date FROM employee`;
+    employeeCount = employees.length;
+    const levels = await tx`
+      SELECT tl.id, tl.track_slug, tl.level_order
+      FROM mvp_title_level tl ORDER BY tl.track_slug, tl.level_order`;
+    const levelByKey = new Map(levels.map(row => [`${row.track_slug}:${row.level_order}`, row.id]));
+
+    const trackFor = (org, role) => {
+      const text = `${org} ${role}`;
+      if (/数据|算法|AI|模型|智能/i.test(text)) return 'ai';
+      if (/运维|SRE|平台|基础设施|DevOps/i.test(text)) return 'platform';
+      return 'software';
+    };
+    const levelOrderFor = role => {
+      if (/专家|资深/.test(role)) return 4;
+      if (/高级/.test(role)) return 3;
+      if (/中级/.test(role)) return 2;
+      return 1;
+    };
+
+    for (const employee of employees) {
+      const track = trackFor(employee.org, employee.role);
+      const order = levelOrderFor(employee.role);
+      const levelId = levelByKey.get(`${track}:${order}`);
+      if (!levelId) throw new Error(`mvp_title_level 缺少 ${track} T${order}`);
+      const slug = `initial-title-${employee.slug}`;
+      const certifiedAt = employee.hire_date ? `${employee.hire_date}T00:00:00+08:00` : '2024-01-01T00:00:00+08:00';
+      const rows = await tx`
+        INSERT INTO mvp_employee_title(slug, employee_slug, title_level_id, certified_at, source_application_slug, status)
+        VALUES(${slug}, ${employee.slug}, ${levelId}, ${certifiedAt}::timestamptz, 'initial-seed', 'active')
+        ON CONFLICT (slug) DO NOTHING
+        RETURNING id`;
+      insertedTitles += rows.length;
     }
 
     for (const item of JUDGING_SAMPLE_RESOURCES) {
@@ -54,7 +95,7 @@ try {
     }
   });
 
-  console.log(`判断层样本：新增 ${insertedSkills} 条认证（共 ${JUDGING_SAMPLE_SKILLS.length} 条）、${insertedResources} 条学习资源（共 ${JUDGING_SAMPLE_RESOURCES.length} 条），已存在的跳过`);
+  console.log(`判断层样本：新增 ${insertedSkills} 条认证（共 ${JUDGING_SAMPLE_SKILLS.length} 条）、${insertedResources} 条学习资源（共 ${JUDGING_SAMPLE_RESOURCES.length} 条）、${insertedTitles} 条初始职称（共 ${employeeCount} 人），已存在的跳过`);
   console.log('预期判定：');
   for (const row of JUDGING_SAMPLE_EXPECTATION) {
     console.log(`  ${row.employee.padEnd(11)} ${row.track}/${row.level}  ${row.state.padEnd(9)} ${row.detail}`);

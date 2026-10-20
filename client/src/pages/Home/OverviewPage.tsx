@@ -5,6 +5,7 @@ import type {
   CareerNode,
   CareerNodeSkill,
   CareerSequenceView,
+  GapAction,
   GapListResponse,
   GapPoolItem,
   GrowthEventsResponse,
@@ -50,6 +51,7 @@ const OverviewPage = () => {
   const [sequences, setSequences] = useState<CareerSequenceView[] | null>(null);
   const [growthEvents, setGrowthEvents] = useState<SkillGrowthEvent[] | null>(null);
   const [gapItems, setGapItems] = useState<GapPoolItem[] | null>(null);
+  const [gapActions, setGapActions] = useState<GapAction[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [channel, setChannel] = useState<ChannelKey>('tech');
   const [sequence, setSequence] = useState<SequenceKey>('software');
@@ -80,7 +82,14 @@ const OverviewPage = () => {
     let cancelled = false;
     growthApi.getCareer()
       .then((res) => {
-        if (!cancelled) setSequences(res.sequences);
+        if (!cancelled) {
+          setSequences(res.sequences);
+          // 默认聚焦偏好序列的「推荐下一站」节点
+          const nextNode = res.sequences
+            .flatMap(sequence => sequence.nodes)
+            .find(node => node.isNext);
+          if (nextNode) setSelectedNodeId(nextNode.id);
+        }
       })
       .catch((error: unknown) => {
         if (!cancelled) {
@@ -97,6 +106,13 @@ const OverviewPage = () => {
           logger.error('获取差距池失败', error);
           setLoadError('差距池数据加载失败，请稍后重试');
         }
+      });
+    growthApi.getGapActions()
+      .then((res) => {
+        if (!cancelled) setGapActions(res.items);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) logger.error('获取行动建议失败', error);
       });
     return () => { cancelled = true; };
   }, []);
@@ -293,7 +309,9 @@ const OverviewPage = () => {
         <div className="career-route">
           {careerNodes.map((node, index) => {
             const classes: string[] = ['career-node'];
-            if (node.coverage >= 100) classes.push('reached');
+            if (node.achieved) classes.push('reached');
+            if (node.achieved && node.meta === '当前岗位') classes.push('current');
+            if (node.isNext && !node.achieved) classes.push('next-stop');
             if (node.id === selectedNode.id) classes.push('selected');
             return (
               <button key={node.id} className={classes.join(' ')} onClick={() => setSelectedNodeId(node.id)}>
@@ -356,7 +374,26 @@ const OverviewPage = () => {
 
         <section className="panel recommendation-panel">
           <div className="section-head"><div><h3>针对 Gap 的行动建议</h3><p>课程只是其中一种方式，建议同时包含学习、实践、导师反馈和可验证交付</p></div><button className="ghost idp-entry" onClick={() => navigate('idp')}>查看完整 IDP →</button></div>
-          <div className="empty-panel" style={{ padding: '30px 20px' }}><p>尚未生成行动建议，可先查看或制定个人发展计划。</p></div>
+          {gapActions.length === 0
+            ? <div className="empty-panel" style={{ padding: '30px 20px' }}><p>当前没有未达成的能力要求，可先查看或制定个人发展计划。</p></div>
+            : (
+              <div className="gap-action-list">
+                {gapActions.map((action: GapAction) => (
+                  <article key={action.id} className={`gap-action-card kind-${action.kind}`}>
+                    <span className={`gap-action-badge ${action.kind}`}>{action.badge}</span>
+                    <div className="gap-action-body">
+                      <h4>{action.title}</h4>
+                      <p className="gap-action-detail">{action.detail}</p>
+                      <p className="gap-action-gap">对应 Gap：{action.gapTitle}</p>
+                    </div>
+                    <div className="gap-action-side">
+                      {action.effort && <small>{action.effort}</small>}
+                      <button className="gap-action-cta" onClick={() => navigate('idp')}>{action.actionLabel}</button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
         </section>
       </div>
 

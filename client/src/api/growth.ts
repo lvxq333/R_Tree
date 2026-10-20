@@ -1,5 +1,6 @@
 import type {
   CareerResponse,
+  GapActionsResponse,
   GapListResponse,
   GrowthEventsResponse,
   GrowthRange,
@@ -45,6 +46,19 @@ export async function listGaps(): Promise<GapListResponse> {
     return res.data;
   } catch (error) {
     logger.error('获取差距池失败', error);
+    throw error;
+  }
+}
+
+export async function getGapActions(): Promise<GapActionsResponse> {
+  try {
+    const res = await axiosForBackend.request<GapActionsResponse>({
+      url: '/api/gaps/actions',
+      method: 'GET',
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('获取行动建议失败', error);
     throw error;
   }
 }
