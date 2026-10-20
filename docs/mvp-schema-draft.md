@@ -28,7 +28,7 @@
 | | `mvp_skill_competency` | 技能 × 等级 × 子能力要求 | ~500 |
 | | `mvp_title_track` | 职称序列（3 类技术序列） | 3 |
 | | `mvp_title_level` | 职称层级（每序列 4 层） | 12 (3×4) |
-| | `mvp_title_requirement` | 职称所需技能（每层 5 项 × 12 层） | 60 |
+| | `mvp_title_requirement` | 职称所需技能（每层 4 项 × 12 层） | 48 |
 | | `mvp_standard_version` | 标准版本 | ~5 |
 | **员工状态** | `mvp_employee_competency` | 员工子能力认证 | ~300 |
 | | `mvp_employee_skill` | 员工技能认证（新） | ~150 |
@@ -849,7 +849,7 @@
 
 1. 把 24 张表的 Drizzle 定义写到 `server/database/mvp-schema.ts`（独立文件，不动现有 `schema.ts`）
 2. 写迁移脚本 `scripts/mvp-migrate.mjs`（只创建新表，不动 27 张旧表）
-3. 写 30 名员工 + 组织关系 + 3 序列骨架（`software` / `platform` / `ai`，各 4 层、共 60 条技能要求）的种子脚本
+3. 写 30 名员工 + 组织关系 + 3 序列骨架（`software` / `platform` / `ai`，各 4 层、共 48 条技能要求）的种子脚本
 4. 写 `legacy-sync.service.ts` 的 P0 映射逻辑
 5. 然后再开始 M2 的接口和页面
 

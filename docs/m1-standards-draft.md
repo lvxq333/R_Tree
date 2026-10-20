@@ -1,4 +1,4 @@
-# M1 标准草稿 v0.2 · 3 条序列 × 4 层职称
+# MVP 标准草稿 v1.0（三序列） · 3 条序列 × 4 层职称
 
 > **用途**：M1 数据底座的种子输入，供业务复核后固化进 `mvp_title_track` / `mvp_title_level` / `mvp_title_requirement` / `mvp_competency`。
 > **来源文件**：`server/database/seed/standards-draft.json`（本文件由 `scripts/render-standards-draft.mjs` 生成，改内容请改 JSON）
@@ -6,7 +6,7 @@
 
 > **范围**：仅技术类三序列：software（软件开发）、platform（平台工程）、ai（数据与 AI）。销售、客户成功、产品、项目管理等业务序列移出 MVP。
 
-> **口径**：序列 slug、层级代码与层级名称沿用库内既有 career_sequence / career_node 定义，不另造。技能要求按层写「该层新增或提高的要求」，与既有 career_node_skill 语义一致：未列出的技能沿用较低层要求，Gap 只算本层新增/提高项。全部标记「MVP 假定标准」，管理端可改。
+> **口径**：序列 slug、层级代码与层级名称沿用库内既有 career_sequence / career_node 定义（platform / ai 的 T1 名称本次改为按序列区分）。技能要求按层写「该层新增或提高的要求」，与既有 career_node_skill 语义一致：未列出的技能沿用较低层要求，Gap 只算本层新增/提高项。全部标记「MVP 假定标准」，管理端可改。
 
 ---
 
@@ -14,11 +14,11 @@
 
 | # | 序列 | 名称 | 层级 | 层级数 | 技能要求 | 来源 |
 |---|---|---|---|---|---|---|
-| 1 | `software` | 软件开发序列 | T1 初级软件开发工程师<br>T2 中级软件开发工程师<br>T3 高级软件开发工程师<br>T4 资深 / 专家工程师 | 4 | 20 条 | 精编 |
-| 2 | `platform` | 平台工程序列 | T1 初级软件开发工程师<br>T2 平台开发工程师<br>T3 高级平台工程师<br>T4 平台架构专家 | 4 | 20 条 | 精编 |
-| 3 | `ai` | 数据与 AI 序列 | T1 初级软件开发工程师<br>T2 AI 应用开发工程师<br>T3 高级 AI 工程师<br>T4 AI 架构专家 | 4 | 20 条 | 精编 |
+| 1 | `software` | 软件开发序列 | T1 初级软件开发工程师<br>T2 中级软件开发工程师<br>T3 高级软件开发工程师<br>T4 资深 / 专家工程师 | 4 | 16 条 | 精编 |
+| 2 | `platform` | 平台工程序列 | T1 初级平台工程师<br>T2 平台开发工程师<br>T3 高级平台工程师<br>T4 平台架构专家 | 4 | 16 条 | 精编 |
+| 3 | `ai` | 数据与 AI 序列 | T1 初级 AI 工程师<br>T2 AI 应用开发工程师<br>T3 高级 AI 工程师<br>T4 AI 架构专家 | 4 | 16 条 | 精编 |
 
-合计 **3 条序列、12 个职称层级、60 条技能要求**，其中沿用库内既有 48 条、本次补齐 12 条（标 `+`）。
+合计 **3 条序列、12 个职称层级、48 条技能要求**，全部沿用库内既有 `career_node_skill`，本次不新增、不调等级。
 
 ---
 
@@ -26,23 +26,22 @@
 
 > 每层只列**该层新增或提高的要求**，未列出的技能沿用较低层要求。因此「本次升级 Gap」= 本层要求 − 已满足项，不重复计入下层已满足的技能。
 
-> 带 `+` 的是本次补齐项，其余逐条对应库内既有 `career_node_skill`。
+> 每条要求逐条对应库内既有 `career_node_skill`，本次未新增条目。
 
 ### 软件开发序列（`software`）
 
 | 层级 | 本层新增/提高要求 | 条数 | 累计要求 |
 |---|---|---|---|
-| T1 初级软件开发工程师 | programming `L2`、code-quality `L2`、auto-testing `L2`、requirements `L2`、task-delivery `L2` + | 5 | 5 项技能 |
-| T2 中级软件开发工程师 | java-go-eng `L3`、sys-design-split `L3`、engineering-quality `L3`、collaboration `L3`、code-quality `L3` + | 5 | 9 项技能 |
-| T3 高级软件开发工程师 | distributed-sys `L4`、perf-capacity `L4`、proposal-decision `L4`、tech-influence `L3`、java-go-eng `L4` + | 5 | 13 项技能 |
-| T4 资深 / 专家工程师 | domain-arch `L5`、tech-strategy `L4`、org-governance `L4`、talent-dev `L4`、java-go-eng `L5` + | 5 | 17 项技能 |
+| T1 初级软件开发工程师 | programming `L2`、code-quality `L2`、auto-testing `L2`、requirements `L2` | 4 | 4 项技能 |
+| T2 中级软件开发工程师 | java-go-eng `L3`、sys-design-split `L3`、engineering-quality `L3`、collaboration `L3` | 4 | 8 项技能 |
+| T3 高级软件开发工程师 | distributed-sys `L4`、perf-capacity `L4`、proposal-decision `L4`、tech-influence `L3` | 4 | 12 项技能 |
+| T4 资深 / 专家工程师 | domain-arch `L5`、tech-strategy `L4`、org-governance `L4`、talent-dev `L4` | 4 | 16 项技能 |
 
 **累计最低要求**（把本层与以下各层合并后的结果）：
 
 | 技能 | 分类 | T1 | T2 | T3 | T4 |
 |---|---|---|---|---|---|
 | domain-arch | sys-design | — | — | — | **L5** |
-| java-go-eng | coding-eng | — | **L3** | **L4** | **L5** |
 | org-governance | org-mgmt | — | — | — | **L4** |
 | talent-dev | org-mgmt | — | — | — | **L4** |
 | tech-strategy | org-mgmt | — | — | — | **L4** |
@@ -50,14 +49,14 @@
 | perf-capacity | sys-design | — | — | **L4** | L4 |
 | proposal-decision | sys-design | — | — | **L4** | L4 |
 | tech-influence | collab-impact | — | — | **L3** | L3 |
-| code-quality | eng-quality | **L2** | **L3** | L3 | L3 |
 | collaboration | collaboration | — | **L3** | L3 | L3 |
 | engineering-quality | eng-quality | — | **L3** | L3 | L3 |
+| java-go-eng | coding-eng | — | **L3** | L3 | L3 |
 | sys-design-split | sys-design | — | **L3** | L3 | L3 |
 | auto-testing | eng-quality | **L2** | L2 | L2 | L2 |
+| code-quality | eng-quality | **L2** | L2 | L2 | L2 |
 | programming | coding-eng | **L2** | L2 | L2 | L2 |
 | requirements | business | **L2** | L2 | L2 | L2 |
-| task-delivery | eng-practice | **L2** | L2 | L2 | L2 |
 
 > 加粗为该层要求有变化，浅色为该层沿用下层要求。
 
@@ -65,17 +64,16 @@
 
 | 层级 | 本层新增/提高要求 | 条数 | 累计要求 |
 |---|---|---|---|
-| T1 初级软件开发工程师 | programming `L2`、code-quality `L2`、auto-testing `L2`、requirements `L2`、task-delivery `L2` + | 5 | 5 项技能 |
-| T2 平台开发工程师 | cloud-platform-dev `L3`、k8s `L3`、observability-building `L3`、collaboration `L3`、infra-as-code `L2` + | 5 | 10 项技能 |
-| T3 高级平台工程师 | platform-product `L4`、stability-gov `L4`、cost-capacity `L4`、tech-influence `L3`、k8s `L4` + | 5 | 14 项技能 |
-| T4 平台架构专家 | infra-arch `L5`、platform-tech-strategy `L4`、org-governance `L4`、talent-dev `L4`、k8s `L5` + | 5 | 18 项技能 |
+| T1 初级平台工程师 | programming `L2`、code-quality `L2`、auto-testing `L2`、requirements `L2` | 4 | 4 项技能 |
+| T2 平台开发工程师 | cloud-platform-dev `L3`、k8s `L3`、observability-building `L3`、collaboration `L3` | 4 | 8 项技能 |
+| T3 高级平台工程师 | platform-product `L4`、stability-gov `L4`、cost-capacity `L4`、tech-influence `L3` | 4 | 12 项技能 |
+| T4 平台架构专家 | infra-arch `L5`、platform-tech-strategy `L4`、org-governance `L4`、talent-dev `L4` | 4 | 16 项技能 |
 
 **累计最低要求**（把本层与以下各层合并后的结果）：
 
 | 技能 | 分类 | T1 | T2 | T3 | T4 |
 |---|---|---|---|---|---|
 | infra-arch | platform-eng | — | — | — | **L5** |
-| k8s | cloud-native | — | **L3** | **L4** | **L5** |
 | org-governance | org-mgmt | — | — | — | **L4** |
 | platform-tech-strategy | platform-eng | — | — | — | **L4** |
 | talent-dev | org-mgmt | — | — | — | **L4** |
@@ -85,13 +83,12 @@
 | tech-influence | collab-impact | — | — | **L3** | L3 |
 | cloud-platform-dev | platform-eng | — | **L3** | L3 | L3 |
 | collaboration | collaboration | — | **L3** | L3 | L3 |
-| infra-as-code | platform-eng | — | **L2** | L2 | L2 |
+| k8s | cloud-native | — | **L3** | L3 | L3 |
 | observability-building | stability | — | **L3** | L3 | L3 |
 | auto-testing | eng-quality | **L2** | L2 | L2 | L2 |
 | code-quality | eng-quality | **L2** | L2 | L2 | L2 |
 | programming | coding-eng | **L2** | L2 | L2 | L2 |
 | requirements | business | **L2** | L2 | L2 | L2 |
-| task-delivery | eng-practice | **L2** | L2 | L2 | L2 |
 
 > 加粗为该层要求有变化，浅色为该层沿用下层要求。
 
@@ -99,10 +96,10 @@
 
 | 层级 | 本层新增/提高要求 | 条数 | 累计要求 |
 |---|---|---|---|
-| T1 初级软件开发工程师 | programming `L2`、code-quality `L2`、auto-testing `L2`、requirements `L2`、task-delivery `L2` + | 5 | 5 项技能 |
-| T2 AI 应用开发工程师 | ai-integration `L3`、data-processing `L3`、model-eval `L3`、product-collab `L3`、data-loop `L2` + | 5 | 10 项技能 |
-| T3 高级 AI 工程师 | intelligent-sys `L4`、model-eng `L4`、data-quality-gov `L4`、tech-influence `L3`、model-eval `L4` + | 5 | 14 项技能 |
-| T4 AI 架构专家 | ai-platform-arch `L5`、ai-tech-strategy `L4`、security-gov `L4`、talent-dev `L4`、distributed-training `L4` + | 5 | 19 项技能 |
+| T1 初级 AI 工程师 | programming `L2`、code-quality `L2`、auto-testing `L2`、requirements `L2` | 4 | 4 项技能 |
+| T2 AI 应用开发工程师 | ai-integration `L3`、data-processing `L3`、model-eval `L3`、product-collab `L3` | 4 | 8 项技能 |
+| T3 高级 AI 工程师 | intelligent-sys `L4`、model-eng `L4`、data-quality-gov `L4`、tech-influence `L3` | 4 | 12 项技能 |
+| T4 AI 架构专家 | ai-platform-arch `L5`、ai-tech-strategy `L4`、security-gov `L4`、talent-dev `L4` | 4 | 16 项技能 |
 
 **累计最低要求**（把本层与以下各层合并后的结果）：
 
@@ -110,23 +107,20 @@
 |---|---|---|---|---|---|
 | ai-platform-arch | ai-app | — | — | — | **L5** |
 | ai-tech-strategy | ai-app | — | — | — | **L4** |
-| distributed-training | data-ai | — | — | — | **L4** |
 | security-gov | ai-app | — | — | — | **L4** |
 | talent-dev | org-mgmt | — | — | — | **L4** |
 | data-quality-gov | data-ai | — | — | **L4** | L4 |
 | intelligent-sys | ai-app | — | — | **L4** | L4 |
 | model-eng | data-ai | — | — | **L4** | L4 |
-| model-eval | data-ai | — | **L3** | **L4** | L4 |
 | tech-influence | collab-impact | — | — | **L3** | L3 |
 | ai-integration | ai-app | — | **L3** | L3 | L3 |
-| data-loop | data-ai | — | **L2** | L2 | L2 |
 | data-processing | data-ai | — | **L3** | L3 | L3 |
+| model-eval | data-ai | — | **L3** | L3 | L3 |
 | product-collab | collaboration | — | **L3** | L3 | L3 |
 | auto-testing | eng-quality | **L2** | L2 | L2 | L2 |
 | code-quality | eng-quality | **L2** | L2 | L2 | L2 |
 | programming | coding-eng | **L2** | L2 | L2 | L2 |
 | requirements | business | **L2** | L2 | L2 | L2 |
-| task-delivery | eng-practice | **L2** | L2 | L2 | L2 |
 
 > 加粗为该层要求有变化，浅色为该层沿用下层要求。
 
@@ -136,7 +130,7 @@
 
 **本次不新增技能、不新增分类。** 三条序列全部落在库内既有 81 项技能上，避免出现「标准里有、系统里没有」的悬空条目。
 
-本草稿引用技能 **38 项**（库内共 81 项）。未引用的技能保留在技能池中，员工可自主认证，但不进入职称硬性要求。
+本草稿引用技能 **34 项**（库内共 81 项）。未引用的技能保留在技能池中，员工可自主认证，但不进入职称硬性要求。
 
 ---
 
@@ -232,12 +226,17 @@
 
 ---
 
-## 7. 需要你确认的 4 件事
+## 7. 本轮已确认的 4 项
 
-1. **层级名称**：三条序列的 T1 都叫「初级软件开发工程师」，是库内既有定义。三条序列 T1 同名是否符合实际（还是分别改成「初级平台工程师」「初级 AI 工程师」）？
-2. **每层 4~5 项要求够不够**：既有数据是每层固定 4 项，本次每层补到 5 项。够支撑 Gap 与申请演示，但覆盖偏窄；要不要再补到 6~7 项？
-3. **提高要求的位置**：`java-go-eng` 在 T3 提到 L4、T4 到 L5；`k8s` 在 T3 提到 L4、T4 到 L5。这类「同一技能逐层提高」的节奏是否符合实际？
-4. **`is_auto` 口径**：T1 走「技能组合自动核验」，T2 及以上走人工审批 + 综合实践说明。这个切分是否符合制度预期？
+| # | 问题 | 结论 |
+|---|---|---|
+| 1 | 三条序列 T1 同名 | **已改**：`platform` → 初级平台工程师，`ai` → 初级 AI 工程师，`software` 保持初级软件开发工程师；库内 `career_node.title` 由 008 迁移同步 |
+| 2 | 每层要求项数 | **每层 4 项**，只保留库内既有 48 条，不做补齐 |
+| 3 | 技能等级与职称层的匹配 | **MVP 不追求严格合理性**，沿用既有取值（T3 出现 L3、T4 出现 L5 都可以）。项目版本正式确定后再逐条校准，MVP 只保证流程闭环可验证 |
+| 4 | `is_auto` 口径 | **确认**：T1 走技能组合自动核验，T2 及以上走人工审批 + 综合实践说明 |
+
+> 由此产生的一条实现约定：判断层不得对「等级是否随层级递进」做硬校验，只按本层要求计算，否则后续校准等级时会全部报错。
+
 
 ---
 

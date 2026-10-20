@@ -83,7 +83,7 @@ for (const c of competencyRefMissing) errors.push(`子能力未定义：${c}`);
 const lines = [];
 const p = (...args) => lines.push(...args);
 
-p(`# M1 标准草稿 v0.2 · ${draft.tracks.length} 条序列 × 4 层职称`, '');
+p(`# ${draft.meta.name} · ${draft.tracks.length} 条序列 × 4 层职称`, '');
 p('> **用途**：M1 数据底座的种子输入，供业务复核后固化进 `mvp_title_track` / `mvp_title_level` / `mvp_title_requirement` / `mvp_competency`。');
 p('> **来源文件**：`server/database/seed/standards-draft.json`（本文件由 `scripts/render-standards-draft.mjs` 生成，改内容请改 JSON）');
 p(`> **生成时间**：${draft.meta.date}　**标准版本**：${draft.meta.standardVersion}　**标记**：MVP 假定标准（assumed）`, '');
@@ -99,12 +99,16 @@ draft.tracks.forEach((t, i) => {
   p(`| ${i + 1} | \`${t.slug}\` | ${t.name} | ${t.levels.map(l => `${l.code} ${l.name}`).join('<br>')} | ${t.levels.length} | ${count} 条 | ${t.source === 'refined' ? '精编' : 'AI 草稿'} |`);
 });
 p('');
-p(`合计 **${draft.tracks.length} 条序列、${levelCount} 个职称层级、${requirementCount} 条技能要求**，其中沿用库内既有 ${requirementCount - addedCount} 条、本次补齐 ${addedCount} 条（标 \`+\`）。`, '');
+p(addedCount
+  ? `合计 **${draft.tracks.length} 条序列、${levelCount} 个职称层级、${requirementCount} 条技能要求**，其中沿用库内既有 ${requirementCount - addedCount} 条、本次补齐 ${addedCount} 条（标 \`+\`）。`
+  : `合计 **${draft.tracks.length} 条序列、${levelCount} 个职称层级、${requirementCount} 条技能要求**，全部沿用库内既有 \`career_node_skill\`，本次不新增、不调等级。`, '');
 
 p('---', '');
 p('## 2. 职称层级与技能要求', '');
 p('> 每层只列**该层新增或提高的要求**，未列出的技能沿用较低层要求。因此「本次升级 Gap」= 本层要求 − 已满足项，不重复计入下层已满足的技能。', '');
-p('> 带 `+` 的是本次补齐项，其余逐条对应库内既有 `career_node_skill`。', '');
+p(addedCount
+  ? '> 带 `+` 的是本次补齐项，其余逐条对应库内既有 `career_node_skill`。'
+  : '> 每条要求逐条对应库内既有 `career_node_skill`，本次未新增条目。', '');
 
 for (const track of draft.tracks) {
   p(`### ${track.name}（\`${track.slug}\`）`, '');
@@ -203,11 +207,15 @@ if (unmapped.length) {
 }
 
 p('---', '');
-p('## 7. 需要你确认的 4 件事', '');
-p('1. **层级名称**：三条序列的 T1 都叫「初级软件开发工程师」，是库内既有定义。三条序列 T1 同名是否符合实际（还是分别改成「初级平台工程师」「初级 AI 工程师」）？');
-p('2. **每层 4~5 项要求够不够**：既有数据是每层固定 4 项，本次每层补到 5 项。够支撑 Gap 与申请演示，但覆盖偏窄；要不要再补到 6~7 项？');
-p('3. **提高要求的位置**：`java-go-eng` 在 T3 提到 L4、T4 到 L5；`k8s` 在 T3 提到 L4、T4 到 L5。这类「同一技能逐层提高」的节奏是否符合实际？');
-p('4. **`is_auto` 口径**：T1 走「技能组合自动核验」，T2 及以上走人工审批 + 综合实践说明。这个切分是否符合制度预期？');
+p('## 7. 本轮已确认的 4 项', '');
+p('| # | 问题 | 结论 |');
+p('|---|---|---|');
+p('| 1 | 三条序列 T1 同名 | **已改**：`platform` → 初级平台工程师，`ai` → 初级 AI 工程师，`software` 保持初级软件开发工程师；库内 `career_node.title` 由 008 迁移同步 |');
+p('| 2 | 每层要求项数 | **每层 4 项**，只保留库内既有 48 条，不做补齐 |');
+p('| 3 | 技能等级与职称层的匹配 | **MVP 不追求严格合理性**，沿用既有取值（T3 出现 L3、T4 出现 L5 都可以）。项目版本正式确定后再逐条校准，MVP 只保证流程闭环可验证 |');
+p('| 4 | `is_auto` 口径 | **确认**：T1 走技能组合自动核验，T2 及以上走人工审批 + 综合实践说明 |');
+p('');
+p('> 由此产生的一条实现约定：判断层不得对「等级是否随层级递进」做硬校验，只按本层要求计算，否则后续校准等级时会全部报错。', '');
 
 if (errors.length) {
   p('', '---', '', '## ⚠️ 校验问题', '');
