@@ -3,14 +3,14 @@ import { Injectable, Inject } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import {
-  employeeSkill,
   careerNode,
   careerNodeSkill,
   careerSequence,
   skill,
-  skillEvent,
   skillGap,
 } from '@server/database/schema';
+import { mvpEmployeeSkill } from '@server/database/mvp-schema';
+import { JudgingService } from '../judging/judging.service';
 import type {
   CareerNode,
   CareerNodeSkill,
@@ -42,7 +42,22 @@ function toGapPriority(value: string | null): 'p0' | 'p1' | 'p2' {
 export class GrowthService {
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly judging: JudgingService,
   ) {}
+
+  /** 新表认证：每技能取 active 最高等级（与判断层口径一致）。 */
+  private async activeSkillLevels(employeeSlug: string): Promise<Map<string, number>> {
+    const rows = await this.db
+      .select()
+      .from(mvpEmployeeSkill)
+      .where(and(eq(mvpEmployeeSkill.employeeSlug, employeeSlug), eq(mvpEmployeeSkill.status, 'active')));
+    const levels = new Map<string, number>();
+    for (const row of rows) {
+      const current = levels.get(row.skillSlug) ?? 0;
+      if (row.level > current) levels.set(row.skillSlug, row.level);
+    }
+    return levels;
+  }
 
   async getCareer(): Promise<CareerResponse> {
     const sequences = await this.db.select().from(careerSequence);
@@ -55,12 +70,7 @@ export class GrowthService {
       .from(careerNodeSkill)
       .orderBy(asc(careerNodeSkill.sort));
     const skills = await this.db.select().from(skill);
-    const personalSkills = await this.db.select().from(employeeSkill).where(eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug));
-    const levels = new Map<string, number>();
-    for (const item of personalSkills) {
-      if (!['approved','review','review_submitted'].includes(item.status ?? '')) continue;
-      if (item.skillSlug) levels.set(item.skillSlug, item.currentLevel ?? 0);
-    }
+    const levels = await this.activeSkillLevels(currentEmployee().employeeSlug);
 
     const skillNameBySlug = new Map<string, string>(
       skills.map((row: typeof skill.$inferSelect) => [row.slug, row.name]),
@@ -109,33 +119,56 @@ export class GrowthService {
   }
 
   async getEvents(range: GrowthRange): Promise<GrowthEventsResponse> {
-    const rows = await this.db
+    // 轨迹以新表认证为准（skill_event 旧表已停写）；每技能取最高 active 等级，
+    // 按认证时间升序生成点亮事件，total 为截至该事件的累计技能数。
+    const skillNameBySlug = new Map<string, string>(
+      (await this.db.select().from(skill)).map((row: typeof skill.$inferSelect) => [row.slug, row.name]),
+    );
+    const certs = await this.db
       .select()
-      .from(skillEvent)
-      .where(eq(skillEvent.employeeSlug, currentEmployee().employeeSlug))
-      .orderBy(asc(skillEvent.sort));
+      .from(mvpEmployeeSkill)
+      .where(and(eq(mvpEmployeeSkill.employeeSlug, currentEmployee().employeeSlug), eq(mvpEmployeeSkill.status, 'active')))
+      .orderBy(asc(mvpEmployeeSkill.certifiedAt));
+
+    const best = new Map<string, { at: number; level: number }>();
+    const pending: { at: number; date: string; title: string; level: number }[] = [];
+    for (const row of certs) {
+      const at = row.certifiedAt instanceof Date ? row.certifiedAt.getTime() : Date.parse(String(row.certifiedAt));
+      if (!Number.isFinite(at)) continue;
+      const previous = best.get(row.skillSlug);
+      if (previous && previous.level >= row.level) continue;
+      best.set(row.skillSlug, { at, level: row.level });
+      pending.push({
+        at,
+        date: new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date(at)).replace('-', '.'),
+        title: skillNameBySlug.get(row.skillSlug) ?? row.skillSlug,
+        level: row.level,
+      });
+    }
+    pending.sort((a, b) => a.at - b.at);
+    const seen = new Set<string>();
+    const events: SkillGrowthEvent[] = pending.map(item => {
+      seen.add(item.title);
+      return {
+        date: item.date,
+        total: seen.size,
+        title: item.title,
+        category: '技能认证',
+        level: `L${item.level}`,
+        evidence: '',
+        approver: '',
+        note: `技能认证生效，当前等级 L${item.level}`,
+      };
+    });
 
     const limited =
       range === '6m'
-        ? rows.slice(-6)
+        ? events.slice(-6)
         : range === '12m'
-          ? rows.slice(-9)
-          : rows;
+          ? events.slice(-9)
+          : events;
 
-    const events: SkillGrowthEvent[] = limited.map(
-      (row: typeof skillEvent.$inferSelect): SkillGrowthEvent => ({
-        date: row.dateLabel ?? '',
-        total: row.total ?? 0,
-        title: row.title ?? '',
-        category: row.category ?? '',
-        level: row.level ?? '',
-        evidence: row.evidence ?? '',
-        approver: row.approver ?? '',
-        note: row.note ?? '',
-      }),
-    );
-
-    return { events };
+    return { events: limited };
   }
 
   async getGaps(): Promise<GapListResponse> {
@@ -162,6 +195,29 @@ export class GrowthService {
         priority: toGapPriority(row.priority),
       }),
     );
+
+    // 职业下一节点改由判断层推导：取偏好序列中达标进度最高的 preparing 层（离申请最近）。
+    try {
+      const overview = await this.judging.getOverview();
+      const preferred = overview.tracks.find(track => track.slug === overview.preferredTrack) ?? overview.tracks[0];
+      const next = preferred?.levels
+        .filter(level => level.state === 'preparing')
+        .sort((a, b) => (b.met / Math.max(1, b.total)) - (a.met / Math.max(1, a.total)))[0];
+      if (next) {
+        items.unshift({
+          source: 'career',
+          sourceLabel: '职业下一节点',
+          title: `${next.levelName}（${next.levelCode}）`,
+          description: `还差 ${next.total - next.met} 项能力要求达标，可在「资格自查」页查看明细与补齐方向。`,
+          filled: next.met,
+          target: next.total,
+          levelRange: next.levelCode,
+          priority: 'p1',
+        });
+      }
+    } catch {
+      // 判定层不可用时仅返回旧 Gap 数据，不阻塞页面。
+    }
 
     return { items };
   }

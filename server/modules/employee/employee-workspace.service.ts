@@ -2,12 +2,19 @@ import { currentEmployee } from '../auth/employee-context';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
-import { employee, employeeSkill, skillEvent } from '@server/database/schema';
+import { employee, skillEvent } from '@server/database/schema';
+import { mvpEmployeeSkill } from '@server/database/mvp-schema';
 import type { EmployeeWorkspaceResponse } from '@shared/api.interface';
 import { FactsService } from '../facts/facts.service';
 
-type SkillRow = Pick<typeof employeeSkill.$inferSelect,
-  'id' | 'skillSlug' | 'currentLevel' | 'status' | 'approvedAt' | 'updatedAt'>;
+type SkillRow = {
+  id: string;
+  skillSlug: string | null;
+  currentLevel: number | null;
+  status: string | null;
+  approvedAt: string | null;
+  updatedAt: Date;
+};
 type EventRow = Pick<typeof skillEvent.$inferSelect, 'dateLabel' | 'level'>;
 
 function shanghaiMonth(date: Date): number {
@@ -81,10 +88,29 @@ export class EmployeeWorkspaceService {
     const current = await this.db.select().from(employee).where(eq(employee.id, currentEmployee().employeeId)).limit(1);
     if (!current.length) throw new NotFoundException('当前员工不存在');
     const row = current[0];
-    const [skills, events] = await Promise.all([
-      this.db.select().from(employeeSkill).where(eq(employeeSkill.employeeSlug, row.slug)),
+    const [certRows, events] = await Promise.all([
+      this.db.select().from(mvpEmployeeSkill).where(eq(mvpEmployeeSkill.employeeSlug, row.slug)),
       this.db.select().from(skillEvent).where(eq(skillEvent.employeeSlug, row.slug)),
     ]);
+    // 新表认证映射为旧指标输入：每技能取 active 最高等级，时间取认证时间。
+    const bestBySkill = new Map<string, typeof certRows[number]>();
+    for (const cert of certRows) {
+      if (cert.status !== 'active') continue;
+      const previous = bestBySkill.get(cert.skillSlug);
+      if (!previous || cert.level > previous.level) bestBySkill.set(cert.skillSlug, cert);
+    }
+    const skills: SkillRow[] = [...bestBySkill.values()].map(cert => {
+      const at = cert.certifiedAt instanceof Date ? cert.certifiedAt : new Date(String(cert.certifiedAt));
+      const updatedAt = cert.updatedAt instanceof Date ? cert.updatedAt : new Date(String(cert.updatedAt));
+      return {
+        id: cert.id,
+        skillSlug: cert.skillSlug,
+        currentLevel: cert.level,
+        status: 'approved',
+        approvedAt: Number.isFinite(at.getTime()) ? at.toISOString().slice(0, 10) : null,
+        updatedAt,
+      };
+    });
     const facts = await this.facts.status();
     const now = new Date();
     const timestamps = [row, ...skills, ...events].map(item => item.updatedAt.getTime()).filter(Number.isFinite);
