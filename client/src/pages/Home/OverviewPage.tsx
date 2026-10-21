@@ -11,7 +11,6 @@ import type {
   GapListResponse,
   GapPoolItem,
   GrowthEventsResponse,
-  GrowthRange,
   SkillGrowthEvent,
 } from '@shared/api.interface';
 import { useUI } from './ui-context';
@@ -32,7 +31,6 @@ const GROWTH_CHART_LEFT = 58;
 const GROWTH_CHART_RIGHT = 862;
 const GROWTH_CHART_TOP = 34;
 const GROWTH_CHART_BOTTOM = 238;
-const GROWTH_GRID_VALUES = [5, 10, 15, 20];
 
 const GAP_TABS: { key: GapFilterKey; label: string }[] = [
   { key: 'all', label: '全部 Gap' },
@@ -220,7 +218,7 @@ const OverviewPage = () => {
 
   useEffect(() => {
     let cancelled = false;
-    growthApi.getGrowthEvents(growthRange as GrowthRange)
+    growthApi.getGrowthEvents('all')
       .then((res: GrowthEventsResponse) => {
         if (!cancelled) {
           setGrowthEvents(res.events);
@@ -234,7 +232,7 @@ const OverviewPage = () => {
         }
       });
     return () => { cancelled = true; };
-  }, [growthRange]);
+  }, []);
 
   if (loadError || (!workspace && workspaceError)) {
     return (
@@ -304,26 +302,53 @@ const OverviewPage = () => {
   };
   // 默认选中第一条轨迹（入职职称认定）；用户点选后跟随所选事件。
   const firstEvent = growthEvents[0];
-  const effectiveSelectedDate = selectedGrowthDate !== null && growthEvents.some((item: SkillGrowthEvent) => item.date === selectedGrowthDate)
-    ? selectedGrowthDate
-    : firstEvent?.date ?? '';
-  const selectedEvent = growthEvents.find((item: SkillGrowthEvent) => item.date === effectiveSelectedDate) ?? firstEvent;
   const xStep = growthEvents.length > 1
     ? (GROWTH_CHART_RIGHT - GROWTH_CHART_LEFT) / (growthEvents.length - 1)
     : 0;
+  // 点亮序号语义：入职后第一次点亮 = 第 1 次，此后每次「新增点亮」+1；
+  // 累计数没有变化的事件（进阶认证）不产生新点位，末尾平段不再补终点。
+  const changePoints: (GrowthPoint & { ordinal: number })[] = [];
+  let prevTotal: number | null = null;
+  growthEvents.forEach((item: SkillGrowthEvent, index: number) => {
+    if (prevTotal === null || item.total !== prevTotal) {
+      changePoints.push({
+        x: GROWTH_CHART_LEFT + index * xStep,
+        y: 0,
+        event: item,
+        ordinal: changePoints.length + 1,
+      });
+      prevTotal = item.total;
+    }
+  });
+  const growthYMax = Math.max(5, changePoints.length);
+  const growthGridStep = growthYMax <= 8 ? 2 : 5;
+  const growthGridValues: number[] = [];
+  for (let value = growthGridStep; value <= growthYMax; value += growthGridStep) growthGridValues.push(value);
   const yFor = (value: number): number =>
-    GROWTH_CHART_BOTTOM - (value / 20) * (GROWTH_CHART_BOTTOM - GROWTH_CHART_TOP);
-  const growthPoints: GrowthPoint[] = growthEvents.map((item: SkillGrowthEvent, index: number) => ({
-    x: GROWTH_CHART_LEFT + index * xStep,
-    y: yFor(item.total),
-    event: item,
-  }));
-  // 平台期去点：累计数没有变化的中间点不渲染（保留首尾），无新技能的时间段呈现为一条直线。
-  const chartGrowthPoints: GrowthPoint[] = growthPoints.filter((point, index) =>
-    index === 0 || index === growthPoints.length - 1 || point.event.total !== growthPoints[index - 1].event.total,
-  );
+    GROWTH_CHART_BOTTOM - (value / growthYMax) * (GROWTH_CHART_BOTTOM - GROWTH_CHART_TOP);
+  for (const point of changePoints) point.y = yFor(point.ordinal);
+
+  // 时间范围按事件月份窗口过滤可见的点亮点。
+  const rangeMonths = growthRange === '6m' ? 6 : growthRange === '12m' ? 12 : null;
+  const monthKey = (date: string): number => {
+    const [year, month] = date.split('.').map(Number);
+    return year * 12 + (month || 1);
+  };
+  const now = new Date();
+  const currentMonth = now.getFullYear() * 12 + (now.getMonth() + 1);
+  const chartGrowthPoints = rangeMonths === null
+    ? changePoints
+    : changePoints.filter(point => currentMonth - monthKey(point.event.date) < rangeMonths);
   const linePath = growthCurvePath(chartGrowthPoints);
-  const areaPath = chartGrowthPoints.length ? `${linePath} L ${chartGrowthPoints[chartGrowthPoints.length - 1].x} ${GROWTH_CHART_BOTTOM} L ${chartGrowthPoints[0].x} ${GROWTH_CHART_BOTTOM} Z` : '';
+  const areaPath = chartGrowthPoints.length >= 2
+    ? `${linePath} L ${chartGrowthPoints[chartGrowthPoints.length - 1].x} ${GROWTH_CHART_BOTTOM} L ${chartGrowthPoints[0].x} ${GROWTH_CHART_BOTTOM} Z`
+    : '';
+
+  const effectiveSelectedDate = selectedGrowthDate !== null && growthEvents.some((item: SkillGrowthEvent) => item.date === selectedGrowthDate)
+    ? selectedGrowthDate
+    : changePoints[0]?.event.date ?? '';
+  const selectedEvent = growthEvents.find((item: SkillGrowthEvent) => item.date === effectiveSelectedDate) ?? firstEvent;
+  const selectedOrdinal = changePoints.find(point => point.event.date === effectiveSelectedDate)?.ordinal ?? null;
 
   const handleChannelChange = (next: ChannelKey): void => {
     setChannel(next);
@@ -532,7 +557,7 @@ const OverviewPage = () => {
 
       <section className="panel growth-curve-panel" aria-labelledby="growth-curve-title">
         <div className="growth-curve-head">
-          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>从入职第一次点亮开始保留全部轨迹；当前有效认证以技能明细为准</p></div>
+          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>入职后第一次点亮记为第 1 次，后续每新增一个技能逐次 +1；进阶认证不新增点亮</p></div>
           <div className="growth-curve-summary"><span>当前已点亮 <b>{metrics.certifiedSkillCount}</b> 项</span><span>近6个月 <b>+{recentCertCount}</b></span></div>
           <div className="growth-range" role="tablist" aria-label="选择成长轨迹时间范围">
             {GROWTH_RANGES.map((rangeOption) => (
@@ -558,7 +583,7 @@ const OverviewPage = () => {
                 </filter>
               </defs>
               <g>
-                {GROWTH_GRID_VALUES.map((value) => {
+                {growthGridValues.map((value) => {
                   const gridY = yFor(value);
                   return (
                     <g key={value}>
@@ -567,9 +592,9 @@ const OverviewPage = () => {
                     </g>
                   );
                 })}
-                <text className="growth-axis-label" x={14} y={20}>累计技能数</text>
+                <text className="growth-axis-label" x={14} y={20}>点亮序号</text>
               </g>
-              <path fill="url(#growth-area)" d={areaPath}></path>
+              {chartGrowthPoints.length >= 2 && <path fill="url(#growth-area)" d={areaPath}></path>}
               <path
                 key={`${growthRange}-${effectiveSelectedDate}`}
                 className="is-drawing"
@@ -580,6 +605,9 @@ const OverviewPage = () => {
                 strokeLinejoin="round"
                 d={linePath}
               ></path>
+              {chartGrowthPoints.length === 0 && (
+                <text className="growth-axis-label" x={(GROWTH_CHART_LEFT + GROWTH_CHART_RIGHT) / 2} y={(GROWTH_CHART_TOP + GROWTH_CHART_BOTTOM) / 2} textAnchor="middle">该时间段内没有新的技能点亮</text>
+              )}
               <g>
                 {chartGrowthPoints.map((point) => (
                   <g
@@ -587,7 +615,7 @@ const OverviewPage = () => {
                     className={`growth-point ${point.event.date === effectiveSelectedDate ? 'is-selected' : ''}`}
                     tabIndex={0}
                     role="button"
-                    aria-label={`${point.event.date}，累计点亮 ${point.event.total} 项，${point.event.title}`}
+                    aria-label={`第 ${point.ordinal} 次技能点亮，${point.event.date}，${point.event.title}`}
                     transform={`translate(${point.x} ${point.y})`}
                     onClick={() => setSelectedGrowthDate(point.event.date)}
                     onKeyDown={(event) => handleGrowthPointKeyDown(event, point.event.date)}
@@ -595,22 +623,20 @@ const OverviewPage = () => {
                     <circle className="point-hit" r={18}></circle>
                     <circle className="point-halo" r={12}></circle>
                     <circle className="point-core" r={5}></circle>
-                    <text className="growth-value" y={-14}>{point.event.total}</text>
+                    <text className="growth-value" y={-14}>{point.ordinal}</text>
                   </g>
                 ))}
               </g>
               <g>
-                {growthPoints.map((point, index) => {
-                  const show = growthPoints.length <= 9 || index % 2 === 0 || index === growthPoints.length - 1;
-                  if (!show) return null;
-                  return <text key={point.event.date} className="growth-axis-label" x={point.x} y={266} textAnchor="middle">{point.event.date}</text>;
-                })}
+                {chartGrowthPoints.map((point) => (
+                  <text key={`${point.event.date}-label`} className="growth-axis-label" x={point.x} y={266} textAnchor="middle">{point.event.date}</text>
+                ))}
               </g>
             </svg>
           </div>
           <aside className="growth-event-detail" aria-live="polite">
             {selectedEvent ? <>
-            <span className="growth-event-date">{selectedEvent.date} · 正式生效</span>
+            <span className="growth-event-date">{selectedEvent.date} · {selectedOrdinal ? `第 ${selectedOrdinal} 次技能点亮 · ` : ''}正式生效</span>
             <h4>{selectedEvent.title}</h4>
             <p>{selectedEvent.note}</p>
             <dl>
