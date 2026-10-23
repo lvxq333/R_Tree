@@ -18,8 +18,11 @@ export class AuthGuard implements CanActivate {
     const token = request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
     const user = await this.auth.userFromToken(token);
     if (!user) throw new UnauthorizedException('请先登录');
-    if (/^\/api\/(team|talent|succession)(\/|$)/.test(path) && user.personnelRole !== 'hr')
+    // 梯队与组队为 HR 专属数据；人才搜索对所有管理者工作台角色开放（功能统一，员工不可见）
+    if (/^\/api\/(team|succession)(\/|$)/.test(path) && user.personnelRole !== 'hr')
       throw new ForbiddenException('需要 HR 权限');
+    if (/^\/api\/talent(\/|$)/.test(path) && user.personnelRole === 'employee')
+      throw new ForbiddenException('需要管理者工作台权限');
     if (path.startsWith('/api/fact-center/') && user.personnelRole === 'employee')
       throw new ForbiddenException('需要 HR 或 T4 专家权限');
     if (path.startsWith('/api/fact-center/') && request.method !== 'GET' && user.personnelRole !== 'hr')

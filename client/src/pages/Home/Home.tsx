@@ -62,7 +62,9 @@ const AppShell = () => {
   const [title, subtitle, action] = PAGE_TITLE_MAP[page];
   const managerSurface = isManagerSurface(page);
   const canUseManagerWorkspace = user.personnelRole !== 'employee';
-  const managerWorkspaceLabel = user.personnelRole === 'expert' ? '专家工作台' : '管理者工作台';
+  // 全项目功能统一：所有可进入管理侧的角色共用同一套「管理者工作台」，
+  // 差异只体现在菜单项按权限增减（HR 最全）与各页面数据范围上。
+  const managerWorkspaceLabel = '管理者工作台';
   const managerNav = MANAGER_NAV.filter(item => user.personnelRole === 'hr' || ['manager', 'approval', 'talent'].includes(item.page));
   const dataUpdateTitle = workspaceError ?? (workspace
     ? `临时显示最近成功查询数据库的时间：${workspace.loadedAt}；每 10 秒检索一次，不代表数据发生变动。正式接入外部事实中心后按每 5 分钟及相关操作即时检查。`
@@ -89,7 +91,6 @@ const AppShell = () => {
       return;
     }
     if (page === 'talent') {
-      if (user.personnelRole === 'expert') { document.getElementById('expert-talent-search')?.focus(); return; }
       showToast('人才需求已保存，可继续调整条件或维护候选清单。');
       return;
     }
@@ -145,10 +146,10 @@ const AppShell = () => {
       <main>
         {config.validationMode && <div className="validation-banner">隔离验证环境 · 工作材料、候选技能和通知均为测试样本，不代表员工真实经历</div>}
         <header className="topbar">
-          <div><h1>{title}</h1><p>{page==='factCenter' && user.personnelRole==='expert'?'查看本部门及指派员工的事实与汇总宽表':page==='talent' && user.personnelRole==='expert'?'按权限查找本部门及指派员工':subtitle}</p></div>
+          <div><h1>{title}</h1><p>{subtitle}</p></div>
           <div className="top-actions">
             {config.validationMode && <ValidationInbox />}
-            <button className={`employee-lookup-trigger ${managerSurface && user.personnelRole==='hr' ? '' : 'hidden'}`} aria-expanded={lookupOpen} aria-controls="employee-lookup" onClick={() => setLookupOpen(true)}>
+            <button className={`employee-lookup-trigger ${managerSurface && canUseManagerWorkspace ? '' : 'hidden'}`} aria-expanded={lookupOpen} aria-controls="employee-lookup" onClick={() => setLookupOpen(true)}>
               <span>⌕</span> 搜索员工
             </button>
             <button
@@ -157,14 +158,14 @@ const AppShell = () => {
               disabled={refreshing}
               title={dataUpdateTitle}
             >{workspaceError ? '数据读取失败 · 重试' : workspaceUpdateLabel(workspace?.loadedAt ?? null, page === 'profile' ? '画像更新于' : '数据更新于')}</button>
-            <button className="primary" onClick={handlePrimaryAction}>{page==='talent' && user.personnelRole==='expert'?'搜索人才':action}</button>
+            <button className="primary" onClick={handlePrimaryAction}>{action}</button>
           </div>
         </header>
 
         {renderActivePage(page)}
       </main>
 
-      {user.personnelRole==='hr' && <EmployeeLookup open={lookupOpen} onClose={() => setLookupOpen(false)} />}
+      {canUseManagerWorkspace && <EmployeeLookup open={lookupOpen} onClose={() => setLookupOpen(false)} />}
 
       <div className={`toast ${toast ? '' : 'hidden'}`} role="status" aria-live="polite">{toast}</div>
     </div>

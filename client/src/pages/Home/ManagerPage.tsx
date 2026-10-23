@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ManagerDashboardResponse } from '@shared/api.interface';
 import { getManagerDashboard } from '@/api/fact-center';
-import { useAuth } from './auth-context';
 import { useUI } from './ui-context';
 
 const GRADES = ['T1','T2','T3','T4'];
@@ -17,7 +16,6 @@ function downloadSummary(data:ManagerDashboardResponse) {
 
 export default function ManagerPage() {
   const { navigate,openProfile }=useUI();
-  const {user}=useAuth();
   const [role,setRole]=useState('');
   const [grade,setGrade]=useState('');
   const [data,setData]=useState<ManagerDashboardResponse|null>(null);
@@ -38,12 +36,12 @@ export default function ManagerPage() {
   const rate=scope?.requirementCount ? `${Math.round(scope.metCount/scope.requirementCount*100)}%` : '—';
   const progress=scope?.actionCount ? `${Math.round(scope.completedActionCount/scope.actionCount*100)}%` : '—';
   const heat=showAllSkills?data?.heat??[]:(data?.heat??[]).slice(0,5);
+  // 功能统一：所有角色点击成员都进入员工画像，画像内容按查看权限返回
   const openEmployee=(slug:string)=>{
-    if(user.personnelRole==='hr')openProfile(slug);
-    else {sessionStorage.setItem('fact-center:selected-employee',slug);navigate('factCenter');}
+    openProfile(slug);
   };
   return <section className="page active" id="manager" aria-busy={loading}>
-    <div className="manager-hero"><div><h2>{user.personnelRole==='hr'?'人才驾驶舱':'团队技能地图'}</h2>
+    <div className="manager-hero"><div><h2>团队技能地图</h2>
       <p>{loading?'正在读取…':`${scope?.employeeCount??0} 名可查看员工 · ${scope?.standardEmployeeCount??0} 人已配置适用标准`} · 按当前有效数据计算</p></div>
       <div className="filters manager-filters">
         <label>岗位<select aria-label="筛选岗位" value={role} onChange={event=>setRole(event.target.value)}><option value="">全部岗位</option>
@@ -72,7 +70,7 @@ export default function ManagerPage() {
       <section className="panel risk-panel"><div className="section-head"><div><h3>需要管理动作</h3><p>根据技能差距与复核日期生成</p></div><span>{data?.risks.length??0} 项</span></div>
         {data?.risks.map((risk,index)=><div className={`risk-item ${risk.severity==='high'?'critical':'warning'}`} key={`${risk.kind}-${index}`}>
           <span>{risk.severity==='high'?'高':'中'}</span><div><b>{risk.title}</b><p>{risk.detail}</p>
-            <button onClick={()=>{if(risk.employeeSlug)sessionStorage.setItem('fact-center:selected-employee',risk.employeeSlug);navigate('factCenter');}}>查看相关员工 →</button></div></div>)}
+            <button onClick={()=>{if(risk.employeeSlug)openEmployee(risk.employeeSlug);}}>查看相关员工 →</button></div></div>)}
         {!loading && !data?.risks.length && <p className="fc-empty">当前筛选范围内没有识别出需处理的事项</p>}
       </section>
     </div>
