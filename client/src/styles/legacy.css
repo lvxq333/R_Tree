@@ -740,6 +740,8 @@ body {
 .constellation-key.title { background: #76d1c8; }
 .constellation-key.both { background: #e8b66a; }
 .constellation-notice { position: relative; margin: 10px 0; padding: 9px 12px; border: 1px solid #455676; border-radius: 8px; color: #d5def1; background: #1c2b48; }
+.constellation-empty { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 34px 16px; border: 1px dashed #455676; border-radius: 16px; margin-top: 10px; }
+.constellation-empty .constellation-notice { margin: 0; border: none; background: none; text-align: center; }
 .constellation-frame { position: relative; height: clamp(260px, 34vw, 350px); overflow: hidden; border: 1px solid #334364; border-radius: 16px; background: radial-gradient(circle at 50% 49%, #1b2d55, #0f192e 73%); cursor: grab; }
 .constellation-frame.is-dragging { cursor: grabbing; }
 .constellation-svg { display: block; width: 100%; height: 100%; touch-action: none; }
@@ -2326,3 +2328,10 @@ textarea {
 .constellation-node.is-pending .node-status,.constellation-node.is-review .node-status { fill:#f0c77e; }
 .constellation-node.is-returned .node-status { fill:#efb0be; }
 .constellation-node.is-focused .node-title { fill:#fff; }
+/* 选中（点击查看）的技能点：与“审批中”相同的高亮样式，放在状态样式之后以保证覆盖 */
+.constellation-node.is-selected .node-glow { fill:#e6ac50; opacity:.34; }
+.constellation-node.is-selected .node-orbit { stroke:#e7ae58; opacity:.9; }
+.constellation-node.is-selected .node-ring { fill:rgba(126,85,42,.45); stroke:#e5ad57; }
+.constellation-node.is-selected .node-core { fill:#e7b15c; stroke:#ffe2a4; filter:drop-shadow(0 0 7px #e6ad52); }
+.constellation-node.is-selected .node-status { fill:#f0c77e; }
+.constellation-node.is-selected .node-title { fill:#fff; }

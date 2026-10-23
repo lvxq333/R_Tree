@@ -13,7 +13,7 @@ const MAX_ZOOM = 3.5;
 // 与已点亮相邻的未点亮技能最多展示数量：只保留关联最强的一批，避免星图退化为全目录
 const NEIGHBOR_LIMIT = 24;
 const TRACKS = [
-  { key: 'all', label: '全部相关' }, { key: 'software', label: '软件开发' },
+  { key: 'all', label: '全部技能' }, { key: 'software', label: '软件开发' },
   { key: 'platform', label: '平台工程' }, { key: 'ai', label: '数据与 AI' },
   { key: 'general', label: '通用能力' },
 ];
@@ -214,9 +214,10 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
       .catch(() => { if (active) { setEdges([]); setRelationState('error'); } });
     return () => { active = false; };
   }, [ownedSlugList]);
-  // 星图只展示与本人相关的技能：已涉及的技能 + 与它们关联最强的未点亮技能；尚无点亮记录时退回全目录
+  // 星图只展示与本人相关的技能：已涉及的技能 + 与它们关联最强的未点亮技能；
+  // 尚无任何点亮记录时不铺开目录，直接提示先去点亮第一项技能
   const relevantSkills = useMemo<SkillEntry[]>(() => {
-    if (!ownedKeys.size) return skills;
+    if (!ownedKeys.size) return [];
     if (relationState !== 'ready') return skills.filter(skill => ownedKeys.has(skill.key));
     const weight = new Map<string, number>();
     for (const edge of edges) {
@@ -333,7 +334,7 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
   return <section className="skill-galaxy panel skill-constellation" aria-labelledby="skill-map-title">
     <header className="galaxy-header">
       <div><span className="cert-kicker">我的能力星图</span><h2 id="skill-map-title">技能星图</h2>
-        <p>已点亮 {approvedCount} 项技能，{readyCount} 项出现新的成长信号；星图聚焦已点亮技能与最相近的待点亮技能</p></div>
+        <p>已点亮 {approvedCount} 项技能，{readyCount} 项出现新的成长信号{ownedKeys.size ? '；星图展示我的全部技能与最相近的待点亮技能' : '；点亮后星图将展示与我最相关的技能'}</p></div>
       <div className="galaxy-actions"><button className="primary" onClick={() => onApply(null)}>申请点亮技能</button></div>
     </header>
     <div className="sequence-tabs" role="tablist" aria-label="选择技能序列">
@@ -341,7 +342,7 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
         setTrack(option.key); setViewport({ scale: 1, x: 0, y: 0 }); setNodeOffsets({}); setHoveredKey(null); setInspectedKey(null);
       }}>{option.label}</button>)}
     </div>
-    <div className="constellation-guide"><span>展示与我最相关的技能（已点亮 + 相邻可点亮）· 悬停高亮关联 · 点击查看 · 双击聚焦 · 拖动/缩放</span>
+    <div className="constellation-guide"><span>展示我的全部技能与相邻可点亮技能 · 悬停高亮关联 · 点击查看 · 双击聚焦 · 拖动/缩放</span>
       <div><i className="constellation-key competency" />共同子能力<i className="constellation-key title" />共同职称要求<i className="constellation-key both" />两种依据</div></div>
     {relationState === 'error' && <p className="constellation-notice">关联规则暂时无法读取；星点仍可查看，连线会在服务恢复后显示。</p>}
     {selected ? <>
@@ -365,7 +366,7 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
             const isFocus = skill.key === focusKey;
             const isNeighbor = !!skill.item.skillSlug && neighborSlugs.has(skill.item.skillSlug);
             return <g key={skill.key} data-skill-key={skill.key}
-              className={`constellation-node ${statusClass(skill.item, skill.litLevel)}${isFocus ? ' is-focused' : ''}${focusKey && !isFocus && !isNeighbor ? ' is-muted' : ''}`}
+              className={`constellation-node ${statusClass(skill.item, skill.litLevel)}${skill.key === inspectedKey ? ' is-selected' : ''}${isFocus ? ' is-focused' : ''}${focusKey && !isFocus && !isNeighbor ? ' is-muted' : ''}`}
               transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0}
               aria-label={`${skill.item.title}，${labelOf(skill.item, skill.litLevel)}，${relationCount(skill)}项规则关联`}
               onPointerEnter={() => setHoveredKey(skill.key)} onPointerLeave={() => setHoveredKey(current => current === skill.key ? null : current)}
@@ -390,6 +391,11 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
         <p>{inspectedDescription}</p>{inspected.item.status === 'unlit'
           ? <button onClick={() => onApply(inspected.item.skillSlug ?? null)}>申请点亮技能</button>
           : <button onClick={() => onOpenDetail(inspected.item.id)}>{actionOf(inspected.item.status)}</button>}</div>
-    </> : <p className="constellation-notice">当前序列没有技能事项。你可以主动申请点亮技能。</p>}
+    </> : <div className="constellation-empty">
+        {ownedKeys.size
+          ? <p className="constellation-notice">当前序列没有技能事项。你可以主动申请点亮技能。</p>
+          : <p className="constellation-notice">还未有已点亮的技能。点亮第一项技能后，星图会展示与它最相关的成长空间。</p>}
+        <button className="primary" onClick={() => onApply(null)}>申请点亮技能</button>
+      </div>}
   </section>;
 }
