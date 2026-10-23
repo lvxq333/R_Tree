@@ -12,7 +12,7 @@ export class SkillTreeController {
   }
 
   @Get('skill-relations')
-  async getSkillRelations(@Query('skillSlugs') skillSlugs = ''): Promise<SkillRelationsResponse> {
-    return this.employeeService.getSkillRelations(skillSlugs.split(',').filter(Boolean));
+  async getSkillRelations(@Query('skillSlugs') skillSlugs = '', @Query('expand') expand = ''): Promise<SkillRelationsResponse> {
+    return this.employeeService.getSkillRelations(skillSlugs.split(',').filter(Boolean), expand === '1' || expand === 'true');
   }
 }

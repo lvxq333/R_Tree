@@ -1,16 +1,19 @@
 import { employeeApi } from '@/api';
-import type { SkillRelationEdge } from '@shared/api.interface';
+import type { SkillRelationEdge, SkillTreeResponse } from '@shared/api.interface';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { CertificationItem } from './certification-context';
 
 interface SkillEntry { key: string; item: CertificationItem; litLevel: number; track: string }
+interface CatalogSkill { slug: string; name: string; category: string; track: string }
 interface Point { x: number; y: number }
 const CENTER = { x: 560, y: 280 };
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 3.5;
+// 与已点亮相邻的未点亮技能最多展示数量：只保留关联最强的一批，避免星图退化为全目录
+const NEIGHBOR_LIMIT = 24;
 const TRACKS = [
-  { key: 'all', label: '全部星图' }, { key: 'software', label: '软件开发' },
+  { key: 'all', label: '全部相关' }, { key: 'software', label: '软件开发' },
   { key: 'platform', label: '平台工程' }, { key: 'ai', label: '数据与 AI' },
   { key: 'general', label: '通用能力' },
 ];
@@ -23,6 +26,33 @@ function trackOf(category: string): string {
   for (const [track, words] of Object.entries(TRACK_WORDS))
     if (words.some(word => category.includes(word))) return track;
   return 'general';
+}
+// 标准目录类别 → 星图序列的固定映射，保证所有人的星图分区一致
+const CATEGORY_TRACKS: Record<string, string> = {
+  'coding-eng': 'software', 'sys-design': 'software', 'eng-quality': 'software',
+  'eng-practice': 'software', 'rd-efficiency': 'software',
+  'stability': 'platform', 'cloud-native': 'platform', 'platform-eng': 'platform',
+  'data-ai': 'ai', 'ai-app': 'ai',
+  'business': 'general', 'org-mgmt': 'general', 'collaboration': 'general',
+  'collab-impact': 'general', 'problem-solving': 'general', 'hr-practice': 'general',
+};
+function flattenCatalog(tree: SkillTreeResponse): CatalogSkill[] {
+  const result: CatalogSkill[] = [];
+  for (const top of tree.categories) for (const child of top.children)
+    for (const skill of child.skills)
+      result.push({ slug: skill.slug, name: skill.name, category: `${top.name} / ${child.name}`,
+        track: CATEGORY_TRACKS[child.slug] ?? trackOf(child.name) });
+  return result;
+}
+// 目录中存在、但本人尚无认证事项的技能：统一以“未点亮”状态出现在星图上
+function catalogItem(skill: CatalogSkill): CertificationItem {
+  return {
+    id: `catalog:${skill.slug}`, skillSlug: skill.slug, source: 'catalog', sourceShort: '目录',
+    sourceLabel: '技能目录', title: skill.name, category: skill.category, currentLevel: 0,
+    targetLevel: 0, confidence: 0, status: 'unlit', statusLabel: '未点亮',
+    explanation: `该技能属于${skill.category}，尚未点亮；满足条件后可在技能目录中申请认证。`,
+    anchor: '', evidence: [], deadline: '', approvedAt: null,
+  };
 }
 function labelOf(item: CertificationItem, litLevel = 0): string {
   if (item.status === 'approved') return `L${item.currentLevel} · 已点亮`;
@@ -107,8 +137,10 @@ function layoutGraph(skills: SkillEntry[], edges: SkillRelationEdge[]): Record<s
       node.y = Math.max(75, Math.min(485, node.y + node.vy));
     });
   }
+  // 节点越多越收敛，避免外圈被视图裁切；少量节点时保持舒展
+  const spread = ordered.length >= 50 ? 1.08 : ordered.length >= 25 ? 1.3 : 1.6;
   return Object.fromEntries(nodes.map(node => [node.key, {
-    x: Math.max(75, Math.min(1045, CENTER.x + (node.x - CENTER.x) * 1.6)), y: node.y,
+    x: Math.max(75, Math.min(1045, CENTER.x + (node.x - CENTER.x) * spread)), y: node.y,
   }]));
 }
 export interface EvidenceGalaxyProps {
@@ -130,29 +162,77 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
   const drag = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number;
     nodeKey: string | null; moved: boolean } | null>(null);
   const suppressClick = useRef(false);
+  const [catalog, setCatalog] = useState<CatalogSkill[]>([]);
+  useEffect(() => {
+    let active = true;
+    employeeApi.getSkillTree()
+      .then(tree => { if (active) setCatalog(flattenCatalog(tree)); })
+      .catch(() => { if (active) setCatalog([]); });
+    return () => { active = false; };
+  }, []);
+  // 本人已涉及（点亮 / 审批中 / 复核中）的技能：星图的锚点
+  const ownedKeys = useMemo(() => new Set(certifications.map(item => item.skillSlug || item.title)), [certifications]);
+  const ownedSlugList = useMemo(() =>
+    [...new Set(certifications.map(item => item.skillSlug).filter((slug): slug is string => !!slug))].sort().join(','),
+  [certifications]);
   const skills = useMemo<SkillEntry[]>(() => {
     const grouped = new Map<string, CertificationItem[]>();
     for (const item of certifications) {
       const key = item.skillSlug || item.title;
       grouped.set(key, [...(grouped.get(key) ?? []), item]);
     }
-    return [...grouped].map(([key, items]) => ({
+    const entryOf = (key: string, items: CertificationItem[]): SkillEntry => ({
       key, item: preferredItem(items),
-      litLevel: Math.max(0, ...items.filter(item => item.status === 'approved').map(item => item.currentLevel)),
+      litLevel: Math.max(0, ...items.filter(row => row.status === 'approved').map(row => row.currentLevel)),
       track: trackOf(items[0].category),
-    }));
-  }, [certifications]);
-  const slugList = useMemo(() => skills.map(skill => skill.item.skillSlug).filter((slug): slug is string => !!slug).sort().join(','), [skills]);
+    });
+    // 星图节点以全量标准技能目录为准，保证所有人看到同一张星图；
+    // 个人的认证事项只决定每个技能点的点亮与审批状态
+    const entries: SkillEntry[] = catalog.map(skill => {
+      const items = grouped.get(skill.slug) ?? [];
+      return {
+        key: skill.slug,
+        item: items.length ? preferredItem(items) : catalogItem(skill),
+        litLevel: Math.max(0, ...items.filter(row => row.status === 'approved').map(row => row.currentLevel)),
+        track: skill.track,
+      };
+    });
+    // 历史技能等不在标准目录中的事项仍保留展示
+    const catalogSlugs = new Set(catalog.map(skill => skill.slug));
+    for (const [key, items] of grouped) {
+      if (items[0].skillSlug && catalogSlugs.has(items[0].skillSlug)) continue;
+      entries.push(entryOf(key, items));
+    }
+    return entries;
+  }, [certifications, catalog]);
+  // 以本人技能为锚点请求关联边（expand：允许返回锚点的邻居技能），用于圈定「最相关的未点亮技能」
   useEffect(() => {
     let active = true;
     setRelationState('loading');
-    employeeApi.getSkillRelations(slugList ? slugList.split(',') : [])
+    employeeApi.getSkillRelations(ownedSlugList ? ownedSlugList.split(',') : [], true)
       .then(result => { if (active) { setEdges(result.edges); setRelationState('ready'); } })
       .catch(() => { if (active) { setEdges([]); setRelationState('error'); } });
     return () => { active = false; };
-  }, [slugList]);
+  }, [ownedSlugList]);
+  // 星图只展示与本人相关的技能：已涉及的技能 + 与它们关联最强的未点亮技能；尚无点亮记录时退回全目录
+  const relevantSkills = useMemo<SkillEntry[]>(() => {
+    if (!ownedKeys.size) return skills;
+    if (relationState !== 'ready') return skills.filter(skill => ownedKeys.has(skill.key));
+    const weight = new Map<string, number>();
+    for (const edge of edges) {
+      const fromOwned = ownedKeys.has(edge.fromSkillSlug);
+      const toOwned = ownedKeys.has(edge.toSkillSlug);
+      if (fromOwned === toOwned) continue;
+      const other = fromOwned ? edge.toSkillSlug : edge.fromSkillSlug;
+      weight.set(other, (weight.get(other) ?? 0) + edge.sharedCompetencies.length * 2 + edge.sharedTitleLevels.length);
+    }
+    const neighbors = new Set([...weight.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, NEIGHBOR_LIMIT).map(([slug]) => slug));
+    return skills.filter(skill => ownedKeys.has(skill.key) || (skill.item.skillSlug && neighbors.has(skill.item.skillSlug)));
+  }, [skills, edges, ownedKeys, relationState]);
 
-  const visible = skills.filter(skill => track === 'all' || skill.track === track);
+  const visible = relevantSkills.filter(skill => track === 'all' || skill.track === track);
   const visibleSlugs = new Set(visible.map(skill => skill.item.skillSlug).filter((slug): slug is string => !!slug));
   const visibleEdges = edges.filter(edge => visibleSlugs.has(edge.fromSkillSlug) && visibleSlugs.has(edge.toSkillSlug));
   const layoutKey = visible.map(skill => skill.key).join('|');
@@ -253,7 +333,7 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
   return <section className="skill-galaxy panel skill-constellation" aria-labelledby="skill-map-title">
     <header className="galaxy-header">
       <div><span className="cert-kicker">我的能力星图</span><h2 id="skill-map-title">技能星图</h2>
-        <p>已点亮 {approvedCount} 项技能，{readyCount} 项出现新的成长信号</p></div>
+        <p>已点亮 {approvedCount} 项技能，{readyCount} 项出现新的成长信号；星图聚焦已点亮技能与最相近的待点亮技能</p></div>
       <div className="galaxy-actions"><button className="primary" onClick={() => onApply(null)}>申请点亮技能</button></div>
     </header>
     <div className="sequence-tabs" role="tablist" aria-label="选择技能序列">
@@ -261,7 +341,7 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
         setTrack(option.key); setViewport({ scale: 1, x: 0, y: 0 }); setNodeOffsets({}); setHoveredKey(null); setInspectedKey(null);
       }}>{option.label}</button>)}
     </div>
-    <div className="constellation-guide"><span>悬停高亮关联 · 点击查看技能 · 双击聚焦 · 拖动节点或画布 · 滚轮缩放</span>
+    <div className="constellation-guide"><span>展示与我最相关的技能（已点亮 + 相邻可点亮）· 悬停高亮关联 · 点击查看 · 双击聚焦 · 拖动/缩放</span>
       <div><i className="constellation-key competency" />共同子能力<i className="constellation-key title" />共同职称要求<i className="constellation-key both" />两种依据</div></div>
     {relationState === 'error' && <p className="constellation-notice">关联规则暂时无法读取；星点仍可查看，连线会在服务恢复后显示。</p>}
     {selected ? <>
@@ -307,7 +387,9 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
         </svg>
       </div>
       <div className="constellation-selection" aria-live="polite"><div><b>{inspected.item.title}</b><small>{inspected.item.category} · {labelOf(inspected.item, inspected.litLevel)}</small></div>
-        <p>{inspectedDescription}</p><button onClick={() => onOpenDetail(inspected.item.id)}>{actionOf(inspected.item.status)}</button></div>
+        <p>{inspectedDescription}</p>{inspected.item.status === 'unlit'
+          ? <button onClick={() => onApply(inspected.item.skillSlug ?? null)}>申请点亮技能</button>
+          : <button onClick={() => onOpenDetail(inspected.item.id)}>{actionOf(inspected.item.status)}</button>}</div>
     </> : <p className="constellation-notice">当前序列没有技能事项。你可以主动申请点亮技能。</p>}
   </section>;
 }

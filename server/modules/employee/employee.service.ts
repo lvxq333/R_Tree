@@ -123,7 +123,7 @@ export class EmployeeService {
     return { categories: categoryNodes };
   }
 
-  async getSkillRelations(requestedSlugs: string[]): Promise<SkillRelationsResponse> {
+  async getSkillRelations(requestedSlugs: string[], expand = false): Promise<SkillRelationsResponse> {
     const slugs = [...new Set(requestedSlugs.filter(slug => /^[\w-]{1,64}$/.test(slug)))].slice(0, 100);
     if (slugs.length < 2) return { edges: [] };
     const requested = new Set(slugs);
@@ -162,8 +162,10 @@ export class EmployeeService {
       }
       for (const group of groups.values()) {
         if (kind === 'sharedCompetencies' && group.slugs.size > maximumSelectiveCoverage) continue;
-        const members = [...group.slugs].filter(slug => requested.has(slug)).sort();
+        // expand 模式：返回「至少一端属于请求技能」的边，用于找出与已点亮相邻的未点亮技能
+        const members = (expand ? [...group.slugs] : [...group.slugs].filter(slug => requested.has(slug))).sort();
         for (let i = 0; i < members.length; i++) for (let j = i + 1; j < members.length; j++) {
+          if (expand && !requested.has(members[i]) && !requested.has(members[j])) continue;
           const key = `${members[i]}|${members[j]}`;
           const edge = edges.get(key) ?? {
             fromSkillSlug: members[i], toSkillSlug: members[j], sharedCompetencies: [], sharedTitleLevels: [],

@@ -57,9 +57,9 @@ export async function getSkillTree(): Promise<SkillTreeResponse> {
   }
 }
 
-export async function getSkillRelations(skillSlugs: string[]): Promise<SkillRelationsResponse> {
+export async function getSkillRelations(skillSlugs: string[], expand = false): Promise<SkillRelationsResponse> {
   const res = await axiosForBackend.get<SkillRelationsResponse>('/api/skill-relations', {
-    params: { skillSlugs: skillSlugs.join(',') },
+    params: { skillSlugs: skillSlugs.join(','), ...(expand ? { expand: '1' } : {}) },
   });
   return res.data;
 }
