@@ -60,8 +60,9 @@ try {
           AND level_code=${item.grade} ORDER BY created_at DESC LIMIT 1`;
         if(!level) throw new Error(`缺少职级标准：${item.track}/${item.grade}`);
         await tx`INSERT INTO mvp_employee_title(slug,employee_slug,title_level_id,certified_at,source_application_slug,status)
-          VALUES(${`demo-title-${String(item.number).padStart(3,'0')}`},${item.slug},${level.id},now(),${`demo-seed-${item.number}`},'active')
-          ON CONFLICT(slug) DO UPDATE SET title_level_id=EXCLUDED.title_level_id`;
+          VALUES(${`demo-title-${String(item.number).padStart(3,'0')}`},${item.slug},${level.id},
+            ${`202${item.number%6}-0${item.number%9+1}-15`}::date,${`demo-seed-${item.number}`},'active')
+          ON CONFLICT(slug) DO UPDATE SET title_level_id=EXCLUDED.title_level_id,certified_at=EXCLUDED.certified_at`;
         if(item.grade!=='T4') {
           const groupIndex=Math.floor((item.number-1)/22);
           const expertNumber=groupIndex*22+21;
@@ -102,7 +103,13 @@ try {
       WHERE n.sequence_slug IN ('software','platform','ai','hr') ORDER BY n.sort,s.sort`;
     const knownSkills=new Set((await tx`SELECT slug FROM skill`).map(row=>row.slug));
     let addedSkills=0;
+    // 统一点亮轨迹规则（张伟为手工模板，保持不动；其余员工全系统同一套标准）：
+    // 1. 职称认定在入职日生效，一次性点亮持有层及以下全部岗位要求；
+    // 2. 本序列要求 + 岗位特色技能 + 增益技能（技术=其他两条序列低层要求，HR=人力资源增益技能）
+    //    的认证记录从「入职+45 天」到「今天-15 天」按等级升序确定性铺开；
+    // 3. 职称已覆盖的技能后续认证记为进阶，增益技能让点亮轨迹在认定后持续增长。
     for(const person of employees) {
+      if(person.slug==='zhang-wei') continue;
       const isHr=person.personnel_role==='hr';
       const track=isHr?'hr':(['software','platform','ai'].includes(person.preferred_track)
         ?person.preferred_track:person.title_track);
@@ -111,8 +118,6 @@ try {
       const stage=Math.max(1,Math.min(4,Number(grade.slice(1))||1));
       const chosen=requirements.filter(row=>row.sequence_slug===track &&
         (isHr?row.code==='H1':/^T[1-4]$/.test(row.code) && Number(row.code.slice(1))<=stage));
-      const activeSlugs=new Set((await tx`SELECT DISTINCT skill_slug FROM mvp_employee_skill WHERE employee_slug=${person.slug} AND status='active'`).map(row=>row.skill_slug));
-      if(chosen.every(row=>activeSlugs.has(row.skill_slug))) continue; // 对照本岗位要求，不拿跨序列技能充当该岗位技能。
       const specialty=isHr
         ? person.department.includes('人才发展') ? [['hr-recruiting',2],['hr-people-analytics',1]]
           : [['hr-compliance',2],['org-communication',2]]
@@ -126,6 +131,27 @@ try {
           : [['java-go-eng',Math.min(4,stage+1)]];
       const plan=new Map(chosen.map(row=>[row.skill_slug,row.required_level]));
       for(const [slug,level] of specialty) plan.set(slug,Math.max(plan.get(slug)??0,level));
+      // 增益技能：职称认定之外的增长来源（对标张伟的跨序列认证）。
+      if(isHr) {
+        // 增益技能覆盖雷达四维：人力资源实务 / 组织管理 / 协作与影响 / 业务理解。
+        const extra=person.department.includes('人才发展')
+          ? [['hr-performance',2],['talent-dev',2],['org-design',1],['business-planning',1]]
+          : [['org-design',2],['perf-mgmt',1],['org-governance',1],['requirements',1]];
+        for(const [slug,level] of extra) plan.set(slug,Math.max(plan.get(slug)??0,level));
+      } else {
+        const seedNum=Number(person.slug.match(/(\d+)$/)?.[1] ?? 0)
+          || [...person.slug].reduce((sum,char)=>sum+char.charCodeAt(0),0);
+        const otherTracks=['software','platform','ai'].filter(item=>item!==track);
+        const pool=requirements.filter(row=>otherTracks.includes(row.sequence_slug) && /^T[12]$/.test(row.code));
+        const want=2+(seedNum%2);
+        let picked=0;
+        for(let k=0;k<pool.length && picked<want;k++) {
+          const row=pool[(seedNum*3+k*7)%pool.length];
+          if(plan.has(row.skill_slug)) continue;
+          plan.set(row.skill_slug,row.required_level);
+          picked++;
+        }
+      }
       for(const [slug,level] of plan) {
         if(!knownSkills.has(slug)) throw new Error(`缺少技能标准：${slug}`);
         const id=`directory-${person.slug}-${slug}-l${level}`;
@@ -138,7 +164,31 @@ try {
       if(!isHr && person.preferred_track!==track && person.slug.startsWith('demo-employee-'))
         await tx`UPDATE employee SET preferred_track=${track} WHERE slug=${person.slug}`;
     }
-    console.log(`已为演示员工补充 ${addedSkills} 条岗位技能（原有认证保持不变）`);
+    // 统一铺开认证日期：按等级升序（基础技能在前、进阶在后）在线性时间轴上错开，
+    // 附带确定性抖动并保证严格递增；职称认定日期不受影响（已在入职日生效）。
+    let restaggered=0;
+    for(const person of employees) {
+      if(person.slug==='zhang-wei') continue;
+      const rows=await tx`SELECT id FROM mvp_employee_skill
+        WHERE employee_slug=${person.slug} AND status='active' ORDER BY level,skill_slug`;
+      if(rows.length===0) continue;
+      const hire=person.hire_date instanceof Date ? person.hire_date : new Date(person.hire_date);
+      const start=hire.getTime()+45*86400_000;
+      const end=Date.now()-15*86400_000;
+      if(end-start < rows.length*86400_000) continue;
+      const seedNum=Number(person.slug.match(/(\d+)$/)?.[1] ?? 0)
+        || [...person.slug].reduce((sum,char)=>sum+char.charCodeAt(0),0);
+      let previous=0;
+      for(let i=0;i<rows.length;i++) {
+        const base=start+(end-start)*(rows.length===1?1:i/(rows.length-1));
+        const jitter=((seedNum*7+i*13)%9)-4;
+        const at=Math.min(Math.max(base+jitter*86400_000,previous+86400_000),Date.now()-86400_000);
+        previous=at;
+        await tx`UPDATE mvp_employee_skill SET certified_at=${new Date(at).toISOString()} WHERE id=${rows[i].id}`;
+        restaggered++;
+      }
+    }
+    console.log(`已为演示员工补充 ${addedSkills} 条岗位技能；铺开 ${restaggered} 条认证日期（张伟保持手工模板）`);
   });
   const [counts]=await db`SELECT count(*)::int total,count(*) FILTER(WHERE is_demo)::int demo FROM employee`;
   console.log(`员工总数 ${counts.total}，演示员工 ${counts.demo}`);

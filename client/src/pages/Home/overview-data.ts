@@ -58,11 +58,26 @@ export function buildGrowthChart(events: SkillGrowthEvent[], range: GrowthRangeK
   const start = range === 'all' ? (changes[0]?.at ?? cutoff) : cutoff;
   const duration = Math.max(86400_000, end - start);
   const xFor = (at: number) => left + (at - start) / duration * (right - left);
+  // 同一自然日内的多个点亮事件：在相邻不同日期之间线性内插 x，
+  // 体现事件先后顺序同时保持紧凑，避免同日点亮叠成一条竖线。
+  const day = 86400_000;
+  for (const point of changes) point.x = xFor(point.at);
+  for (let i = 0; i < changes.length; ) {
+    let j = i;
+    while (j + 1 < changes.length && Math.floor(changes[j + 1].at / day) === Math.floor(changes[i].at / day)) j++;
+    if (j > i) {
+      const prevX = i > 0 ? changes[i - 1].x : left;
+      const nextAt = j + 1 < changes.length ? changes[j + 1].at : Math.min(end, changes[j].at + day);
+      const nextX = Math.max(xFor(nextAt), prevX);
+      for (let k = i; k <= j; k++) changes[k].x = prevX + (nextX - prevX) * (k - i + 1) / (j - i + 2);
+    }
+    i = j + 1;
+  }
   const maxOrdinal = Math.max(1, changes.length);
   const step = maxOrdinal <= 12 ? 1 : Math.ceil(maxOrdinal / 6);
   const yMax = Math.ceil((maxOrdinal + 1) / step) * step;
   const yFor = (value: number) => bottom - value / yMax * (bottom - top);
-  const points = changes.filter(point => point.at >= start).map(point => ({ ...point, x: xFor(point.at), y: yFor(point.ordinal) }));
+  const points = changes.filter(point => point.at >= start).map(point => ({ ...point, y: yFor(point.ordinal) }));
   const previous = changes.filter(point => point.at < start).at(-1);
   const linePoints: { x: number; y: number }[] = previous ? [{ x: left, y: yFor(previous.ordinal) }, ...points] : [...points];
   const last = linePoints.at(-1);

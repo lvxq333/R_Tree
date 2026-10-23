@@ -14,7 +14,6 @@ import type {
   SkillGrowthEvent,
 } from '@shared/api.interface';
 import { useUI } from './ui-context';
-import { useAuth } from './auth-context';
 import { useEmployeeWorkspace } from './employee-workspace-context';
 import {
   COMMON_SKILL_NAMES,
@@ -124,7 +123,6 @@ const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
 
 const OverviewPage = () => {
   const { navigate, showToast } = useUI();
-  const { user } = useAuth();
   const { workspace, error: workspaceError } = useEmployeeWorkspace();
   const [sequences, setSequences] = useState<CareerSequenceView[] | null>(null);
   const [growthEvents, setGrowthEvents] = useState<SkillGrowthEvent[] | null>(null);
@@ -132,7 +130,8 @@ const OverviewPage = () => {
   const [gapActions, setGapActions] = useState<GapAction[]>([]);
   const [abilityStructure, setAbilityStructure] = useState<AbilityStructureResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [channel, setChannel] = useState<ChannelKey>(user.personnelRole === 'hr' ? 'management' : 'tech');
+  // 功能统一：初始通道不按登录角色定制，加载后由接口返回的偏好序列（preferredTrack）决定
+  const [channel, setChannel] = useState<ChannelKey>('tech');
   const [sequence, setSequence] = useState<SequenceKey>('software');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('middle');
   const [sequenceMenuOpen, setSequenceMenuOpen] = useState<boolean>(false);
@@ -166,15 +165,15 @@ const OverviewPage = () => {
           setSequences(res.sequences);
           if (res.preferredTrack === 'management') setChannel('management');
           else setChannel('tech');
-          // 默认聚焦偏好序列的「推荐下一站」节点；偏好序列缺失时取第一条有推荐下一站的序列
-          const preferredEntry = res.preferredTrack
-            ? res.sequences.flatMap(sequence => sequence.nodes.map(node => ({ sequenceKey: sequence.key, node })))
-              .find(item => item.sequenceKey === res.preferredTrack && item.node.isNext)
-            : undefined;
-          const entry = preferredEntry
-            ?? res.sequences
-              .flatMap(sequence => sequence.nodes.map(node => ({ sequenceKey: sequence.key, node })))
-              .find(item => item.node.isNext);
+          // 默认聚焦偏好序列的「推荐下一站」节点；偏好序列已全部达成时聚焦其最后一站，
+          // 不再跳到其他序列——职业路线默认视图始终跟随员工自己的序列。
+          const flattened = res.sequences.flatMap(sequence => sequence.nodes.map(node => ({ sequenceKey: sequence.key, node })));
+          const preferredNodes = res.preferredTrack
+            ? flattened.filter(item => item.sequenceKey === res.preferredTrack)
+            : [];
+          const entry = preferredNodes.find(item => item.node.isNext)
+            ?? preferredNodes.at(-1)
+            ?? flattened.find(item => item.node.isNext);
           if (entry) {
             if (['software', 'platform', 'ai'].includes(entry.sequenceKey)) {
               setSequence(entry.sequenceKey as SequenceKey);
@@ -410,10 +409,10 @@ const OverviewPage = () => {
                 </div>
               )}
             </div>
-            {user.personnelRole !== 'hr' && <div className="channel-switch">
+            <div className="channel-switch">
               <button className={channel === 'tech' ? 'active' : ''} onClick={() => handleChannelChange('tech')}>技术序列</button>
               <button className={channel === 'management' ? 'active' : ''} onClick={() => handleChannelChange('management')}>管理通道</button>
-            </div>}
+            </div>
           </div>
         </div>
         <div className="skill-model-note"><b>技能模型</b><span>一级技能：专业技能 / 通用技能</span><i>→</i><span>二级技能：具体可评估能力</span><i>→</i><span>等级：L1-L5</span></div>
