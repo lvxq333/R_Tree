@@ -13,6 +13,9 @@ export interface AuthUser {
   accessRole: Role;
   org: string;
   position: string;
+  department: string;
+  jobGrade: 'T1' | 'T2' | 'T3' | 'T4' | null;
+  personnelRole: 'employee' | 'hr' | 'expert';
 }
 export interface RegisterInput { username: string; password: string; name: string; org?: string; position?: string; hireDate?: string }
 export interface AuthConfig { feishuEnabled: boolean; ssoEnabled: boolean; validationMode?: boolean }
@@ -30,7 +33,7 @@ export interface FactRecord {
   content: Record<string, unknown>;
   version: number;
   status: 'active' | 'deleted';
-  provenance: 'local_legacy_import' | 'simulated' | 'validation_fixture';
+  provenance: 'local_legacy_import' | 'simulated' | 'validation_fixture' | 'manager_entered';
   updatedAt: string;
 }
 export interface FactChange {
@@ -54,6 +57,42 @@ export interface FactCenterStatus {
   assessment: 'not-configured' | 'available';
   unavailableSources: string[];
   simulatedSources: string[];
+}
+export interface EmployeeWideRow {
+  employeeId: string;
+  employeeSlug: string;
+  name: string;
+  role: string | null;
+  org: string | null;
+  status: string | null;
+  hireDate: string | null;
+  summary: string | null;
+  department: string | null;
+  jobGrade: string | null;
+  personnelRole: string;
+  workLocation: string | null;
+  preferredTrack: string | null;
+  isDemo: boolean;
+  factCount: number;
+  projectCount: number;
+  performanceCount: number;
+  evidenceCount: number;
+  otherFactCount: number;
+  latestFactAt: string | null;
+  factTitles: string[];
+  refreshedAt: string;
+}
+export interface TeamSkillMapRow { skillSlug: string; name: string; employeeCount: number; maxLevel: number }
+export interface ManagerDashboardResponse {
+  filters: { roles: string[]; grades: string[] };
+  scope: { employeeCount: number; standardEmployeeCount: number; requirementCount: number; metCount: number;
+    p0GapCount: number; planCount: number; completedActionCount: number; actionCount: number };
+  heat: { skillSlug: string; name: string; grades: { grade: string; demand: number; met: number }[] }[];
+  risks: { kind: 'gap' | 'expiry' | 'standard'; severity: 'high' | 'medium'; title: string; detail: string;
+    employeeSlug?: string }[];
+  members: { employeeSlug: string; name: string; role: string; grade: string | null; target: string;
+    p0Gaps: number; progress: number | null; nextCheckin: string | null }[];
+  calculatedAt: string;
 }
 export type GapSource = 'career' | 'okr' | 'current' | 'profile';
 
@@ -86,6 +125,7 @@ export interface AssessmentResult {
 }
 export interface SkillAssessment {
   id: string;
+  simulated: boolean;
   status: 'queued' | 'running' | 'completed' | 'failed';
   targetLevel: number;
   standardVersion: string;
@@ -103,6 +143,7 @@ export interface AssessmentMaterial {
   kind: FactRecord['kind'];
   detail: string;
   recommended: boolean;
+  simulated: boolean;
 }
 export interface AssessmentWorkspace {
   standard: SkillAssessmentStandard;
@@ -264,6 +305,17 @@ export interface SkillTreeResponse {
   categories: SkillCategoryNode[];
 }
 
+export interface SkillRelationEdge {
+  fromSkillSlug: string;
+  toSkillSlug: string;
+  sharedCompetencies: string[];
+  sharedTitleLevels: string[];
+}
+
+export interface SkillRelationsResponse {
+  edges: SkillRelationEdge[];
+}
+
 /* ========== 认证（技能点亮记录） ========== */
 export interface CertificationEvidence {
   type: string;
@@ -273,6 +325,8 @@ export interface CertificationEvidence {
 
 export interface CertificationItem {
   id: string;
+  skillSlug: string | null;
+  historical?: boolean;
   source: string;
   sourceShort: string;
   sourceLabel: string;
@@ -287,10 +341,12 @@ export interface CertificationItem {
   anchor: string;
   evidence: CertificationEvidence[];
   deadline: string;
+  approvedAt: string | null;
 }
 
 export interface SelfApplicationInput {
   skill: string;
+  skillSlug: string;
   level: number;
   evidenceType: string;
   evidenceTitle: string;
@@ -365,6 +421,8 @@ export interface CareerResponse {
 
 export interface SkillGrowthEvent {
   date: string;
+  /** Exact event time for chronological chart placement; date is the display month. */
+  occurredAt?: string;
   total: number;
   title: string;
   category: string;
@@ -376,7 +434,7 @@ export interface SkillGrowthEvent {
 
 export interface GrowthEventsResponse {
   events: SkillGrowthEvent[];
-  /** 近 6 个月新增认证次数（不含职称认定），用于右上角统计 */
+  /** 近 6 个月首次点亮的技能项数（去重），用于右上角统计 */
   recentCertCount: number;
 }
 
@@ -443,6 +501,17 @@ export interface AbilityStructureResponse {
 
 /* ========== IDP ========== */
 export interface IdpAction {
+  carriedOver?: boolean;
+  customTitle?: boolean;
+  customWindow?: boolean;
+  id?: string;
+  gapKey?: string;
+  status?: IdpActionStatus;
+  resultNote?: string;
+  evidenceSlugs?: string[];
+  evidence?: { slug: string; title: string; url: string | null }[];
+  resourceUrl?: string | null;
+  effort?: string;
   kind: IdpActionKind;
   kindLabel: string;
   title: string;
@@ -452,6 +521,7 @@ export interface IdpAction {
 }
 
 export interface IdpPhase {
+  id?: string;
   range: string;
   title: string;
   theme: string;
@@ -463,6 +533,7 @@ export interface IdpPhase {
 }
 
 export interface IdpMilestone {
+  phaseId?: string;
   time: string;
   title: string;
   detail: string;
@@ -480,12 +551,18 @@ export interface IdpPositioning {
 }
 
 export interface IdpGap {
+  key?: string;
+  source?: string;
+  skillSlug?: string;
   title: string;
   priority: string;
   note: string;
 }
 
 export interface IdpResponse {
+  meta?: IdpPlanMeta;
+  alignments?: IdpAlignment[];
+  changes?: string[];
   positioning: IdpPositioning;
   gaps: IdpGap[];
   phases: IdpPhase[];
@@ -670,3 +747,38 @@ export interface JudgingCandidate {
 export interface JudgingCandidatesResponse {
   items: JudgingCandidate[];
 }
+
+
+export type IdpActionStatus = 'todo' | 'in-progress' | 'done';
+export interface IdpPlanMeta {
+  revision: number;
+  draftId?: string;
+  track: string;
+  level: string;
+  startMonth: string;
+  months: number;
+  generatedAt: string;
+  updatedAt: string;
+  sourceFingerprint: string;
+  generator: 'gap-rules';
+}
+export interface IdpAlignment { id: string; date: string; participant: string; note: string; createdAt: string; }
+export interface IdpOptions {
+  overview: JudgingOverview;
+  defaultTarget: { track: string; level: string } | null;
+  evidence: { slug: string; title: string }[];
+}
+export interface IdpGenerateRequest { track: string; level: string; startMonth: string; months: number; }
+export interface IdpSaveRequest { draftId: string; }
+export interface IdpActionUpdate {
+  revision: number;
+  status: IdpActionStatus;
+  resultNote: string;
+  evidenceSlugs: string[];
+  evidenceLink?: string;
+  title?: string;
+  window?: string;
+}
+export interface IdpAlignmentRequest { revision: number; date: string; participant: string; note: string; }
+export interface IdpRevision { revision: number; reason: string; createdAt: string; }
+export interface IdpLiveReview { readiness: number; met: number; total: number; gaps: string[]; changed: boolean; }

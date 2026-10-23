@@ -5,14 +5,14 @@ export type PageId =
   | 'evidence'
   | 'judging'
   | 'idp'
+  | 'colleagues'
   | 'manager'
   | 'profile'
   | 'approval'
   | 'talent'
   | 'succession'
-  | 'team';
-
-export type Role = 'employee' | 'manager';
+  | 'team'
+  | 'factCenter';
 
 /* 与 shared 契约完全一致的字段直接 re-export，避免双源漂移 */
 export type { TalentCandidate, ProfileProject } from '@shared/api.interface';

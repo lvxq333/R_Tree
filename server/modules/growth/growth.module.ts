@@ -9,5 +9,6 @@ import { JudgingModule } from '../judging/judging.module';
   imports: [JudgingModule],
   controllers: [GrowthController, CareerController, GapController],
   providers: [GrowthService],
+  exports: [GrowthService],
 })
 export class GrowthModule {}

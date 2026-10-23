@@ -2,6 +2,7 @@ import { currentEmployee } from '../auth/employee-context';
 import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -9,7 +10,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
-import { asc, eq, inArray } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import dayjs from 'dayjs';
 import { approval, employeeSkill, employee } from '@server/database/schema';
 import type {
@@ -43,15 +44,22 @@ export class ApprovalService {
   ) {}
 
   async listApprovals(): Promise<ApprovalItem[]> {
-    const ownSkills = this.db.select({ slug: employeeSkill.slug }).from(employeeSkill).where(eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug));
+    const user=currentEmployee();
+    const ownSkills = this.db.select({ slug: employeeSkill.slug }).from(employeeSkill).where(eq(employeeSkill.employeeSlug, user.employeeSlug));
     const rows = await this.db.select().from(approval)
-      .where(currentEmployee().accessRole === 'manager' ? undefined : inArray(approval.linkedSlug, ownSkills))
+      .where(user.personnelRole === 'hr' ? undefined : user.personnelRole === 'employee' ? inArray(approval.linkedSlug, ownSkills)
+        : inArray(approval.linkedSlug,this.db.select({slug:employeeSkill.slug}).from(employeeSkill)
+          .where(inArray(employeeSkill.employeeSlug,this.db.select({slug:employee.slug}).from(employee)
+            .where(sql`${employee.org}=${user.department} OR EXISTS(SELECT 1 FROM mvp_org_relation r
+              WHERE r.employee_slug=${employee.slug} AND r.target_slug=${user.employeeSlug}
+                AND r.relation_type IN ('expert','panel') AND r.effective_to IS NULL)`)))))
       .orderBy(asc(approval.sort));
     return rows.map((row: typeof approval.$inferSelect) => toApprovalItem(row));
   }
 
   /** 管理者发起评审：生成待审批认证 + 关联降级复核审批单 */
   async managerReview(input: ManagerReviewInput): Promise<CertificationMutationResult> {
+    if (currentEmployee().personnelRole !== 'hr') throw new ForbiddenException('只有 HR 可以发起管理评审');
     if (!input.personName) throw new BadRequestException('personName 不能为空');
     if (!input.skill) throw new BadRequestException('skill 不能为空');
     if (typeof input.currentLevel !== 'number' || typeof input.targetLevel !== 'number') {
@@ -140,6 +148,15 @@ export class ApprovalService {
       .limit(1);
     const approvalRow = rows[0];
     if (!approvalRow) throw new NotFoundException(`审批单不存在：${slug}`);
+    if (approvalRow.status !== 'pending') throw new BadRequestException('该审批单已处理，请刷新列表');
+    if (currentEmployee().personnelRole === 'expert') {
+      const [target]=await this.db.execute<{allowed:boolean}>(sql`SELECT EXISTS(
+        SELECT 1 FROM employee_skill s JOIN employee e ON e.slug=s.employee_slug
+        WHERE s.slug=${approvalRow.linkedSlug} AND (e.department=${currentEmployee().department} OR EXISTS(
+          SELECT 1 FROM mvp_org_relation r WHERE r.employee_slug=e.slug AND r.target_slug=${currentEmployee().employeeSlug}
+            AND r.relation_type IN ('expert','panel') AND r.effective_to IS NULL))) AS allowed`);
+      if (!target?.allowed) throw new ForbiddenException('只能处理本部门或指派复核的审批');
+    }
     const action = input.action;
     const comment: string = input.comment ?? '';
     if ((action === 'return' || action === 'reject') && !comment) {
@@ -166,18 +183,33 @@ export class ApprovalService {
       this.applyCertificationPatch(certPatch, certRow, approvalRow, action);
     }
 
-    const approvalUpdated = await this.db
-      .update(approval)
-      .set(approvalPatch)
-      .where(eq(approval.slug, slug))
-      .returning();
-    const updatedApprovalRow = approvalUpdated[0];
-    if (!updatedApprovalRow) throw new NotFoundException(`审批单不存在：${slug}`);
+    const resolvedSkill = action === 'approve' && certRow
+      ? (await this.db.execute<{slug:string}>(sql`SELECT slug FROM skill WHERE slug=${certRow.skillSlug}
+          OR ( ${certRow.skillSlug}::text IS NULL AND name=${certRow.title}) LIMIT 1`))[0]
+      : undefined;
+    if (action === 'approve' && certRow && !resolvedSkill) throw new BadRequestException('技能不在当前技能库中，不能点亮');
 
-    let certification: CertificationItem | null = null;
-    if (certRow) {
-      certification = await this.syncLinkedCertification(certRow.slug, certPatch);
-    }
+    const { updatedApprovalRow, certification } = await this.db.transaction(async tx => {
+      const [updatedApprovalRow] = await tx.update(approval).set(approvalPatch)
+        .where(eq(approval.slug, slug)).returning();
+      if (!updatedApprovalRow) throw new NotFoundException(`审批单不存在：${slug}`);
+      let certification: CertificationItem | null = null;
+      if (certRow) {
+        const [updated] = await tx.update(employeeSkill).set({ ...certPatch,
+          ...(resolvedSkill && !certRow.skillSlug ? { skillSlug: resolvedSkill.slug } : {}) })
+          .where(eq(employeeSkill.slug, certRow.slug)).returning();
+        if (!updated) throw new NotFoundException(`认证记录不存在：${certRow.slug}`);
+        certification = toCertificationItem(updated);
+        if (action === 'approve' && resolvedSkill) {
+          await tx.execute(sql`INSERT INTO mvp_employee_skill
+            (slug,employee_slug,skill_slug,level,certified_at,source_application_slug,status,source)
+            VALUES (${`approved-${randomUUID()}`},${certRow.employeeSlug},${resolvedSkill.slug},
+              ${updated.currentLevel ?? 0},now(),NULL,'active','application')
+            ON CONFLICT (employee_slug,skill_slug,level) DO NOTHING`);
+        }
+      }
+      return { updatedApprovalRow, certification };
+    });
     this.logger.log(
       `approval decided: ${JSON.stringify({ slug, action, linked: approvalRow.linkedSlug })}`,
     );
@@ -257,20 +289,6 @@ export class ApprovalService {
       default:
         break;
     }
-  }
-
-  private async syncLinkedCertification(
-    certSlug: string,
-    certPatch: Partial<typeof employeeSkill.$inferInsert>,
-  ): Promise<CertificationItem> {
-    const updated = await this.db
-      .update(employeeSkill)
-      .set(certPatch)
-      .where(eq(employeeSkill.slug, certSlug))
-      .returning();
-    const row = updated[0];
-    if (!row) throw new NotFoundException(`认证记录不存在：${certSlug}`);
-    return toCertificationItem(row);
   }
 
   private extendQuarter(deadline: string | null): string {

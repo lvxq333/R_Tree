@@ -1,7 +1,7 @@
 import { currentEmployee } from '../auth/employee-context';
 import { Injectable, Inject } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import {
   careerNode,
   careerNodeSkill,
@@ -173,7 +173,15 @@ export class GrowthService {
     const skillNameBySlug = new Map<string, string>(
       skills.map((row: typeof skill.$inferSelect) => [row.slug, row.name]),
     );
-    const preferred = this.judging.preferredTrackForCurrentEmployee();
+    const user = currentEmployee();
+    const [profile] = await this.db.execute<{ preferred_track: string | null }>(sql`
+      SELECT preferred_track FROM employee WHERE slug=${employeeSlug}`);
+    const titleTrack = [...levelByTrack.entries()]
+      .filter(([track, level]) => TECH_TRACKS.includes(track) && level > 0 && sourceByTrack.get(track) === 'title')
+      .sort((a, b) => b[1] - a[1])[0]?.[0];
+    const preferred = user.personnelRole === 'hr' ? 'management'
+      : profile && TECH_TRACKS.includes(profile.preferred_track ?? '') ? profile.preferred_track
+        : titleTrack ?? this.judging.preferredTrackForCurrentEmployee();
 
     const skillsByNode = new Map<string, CareerNodeSkill[]>();
     const achievedByNode = new Map<string, boolean>();
@@ -236,7 +244,7 @@ export class GrowthService {
     }
 
     for (const [trackSlug, trackNodes] of nodesBySequence) {
-      if (trackSlug === 'management') continue;
+      if (trackSlug === 'management' || trackSlug === 'hr') continue;
       const heldLevel = levelByTrack.get(trackSlug) ?? 0;
       const pending = trackNodes.filter(node => !node.achieved);
       pending.forEach((node, index) => {
@@ -310,7 +318,22 @@ export class GrowthService {
       }
     });
 
-    const sequenceViews: CareerSequenceView[] = sequences.map(
+    if (user.personnelRole === 'hr') {
+      const hrNodes = nodesBySequence.get('hr') ?? [];
+      const specialty = user.position.includes('员工关系') ? '员工关系' : '人才发展';
+      hrNodes.forEach((node, index) => {
+        node.title = [user.position || '人力资源专员', `资深${specialty}专员`, '人力资源经理', '人力资源总监'][index] ?? node.title;
+        node.achieved = index === 0;
+        node.isNext = index === 1;
+        node.meta = index === 0 ? '当前岗位' : index === 1 ? '推荐下一站' : index === 3 ? '长期方向' : '远期方向';
+        node.state = index === 0 ? '当前岗位' : node.meta;
+        node.description = index === 0 ? '当前人力资源岗位的能力基础，以有效技能认证显示掌握情况。' : '根据人力资源岗位技能要求与当前有效认证对照。';
+        node.coverage = Math.round(node.skills.filter(item => item.current >= item.target).length / Math.max(1, node.skills.length) * 100);
+      });
+      return { sequences: [{ key: 'management', label: '人力资源管理通道', description: '人力资源岗位发展路径', nodes: hrNodes }], preferredTrack: 'management' };
+    }
+
+    const sequenceViews: CareerSequenceView[] = sequences.filter(sequence => sequence.slug !== 'hr').map(
       (sequence: typeof careerSequence.$inferSelect): CareerSequenceView => ({
         key: sequence.slug,
         label: sequence.label,
@@ -367,7 +390,7 @@ export class GrowthService {
       .orderBy(asc(mvpEmployeeSkill.certifiedAt));
 
     const lit = new Set<string>();
-    const pending: { at: number; date: string; event: SkillGrowthEvent }[] = [];
+    const pending: { at: number; date: string; skills: string[]; freshCount: number; event: SkillGrowthEvent }[] = [];
     const monthFormat = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' });
 
     // 1) 职称认定事件：持有层及以下要求过的技能在职称生效当天一次性点亮。
@@ -384,11 +407,12 @@ export class GrowthService {
         if (!levelIds.has(levelId)) continue;
         for (const skillSlug of skillSlugs) coveredSkills.add(skillSlug);
       }
-      const fresh = [...coveredSkills].filter(skillSlug => !lit.has(skillSlug));
-      fresh.forEach(skillSlug => lit.add(skillSlug));
+
       pending.push({
         at,
         date: monthFormat.format(new Date(at)).replace('-', '.'),
+        skills: [...coveredSkills],
+        freshCount: 0,
         event: {
           date: '',
           total: lit.size,
@@ -397,7 +421,7 @@ export class GrowthService {
           level: title.levelCode,
           evidence: '入职职称认定',
           approver: '',
-          note: `初始职称认定生效，一次性点亮 ${fresh.length} 项技能要求`,
+          note: '',
         },
       });
     }
@@ -410,11 +434,11 @@ export class GrowthService {
       const previous = best.get(row.skillSlug);
       if (previous && previous.level >= row.level) continue;
       best.set(row.skillSlug, { at, level: row.level });
-      const alreadyLit = lit.has(row.skillSlug);
-      lit.add(row.skillSlug);
       pending.push({
         at,
         date: monthFormat.format(new Date(at)).replace('-', '.'),
+        skills: [row.skillSlug],
+        freshCount: 0,
         event: {
           date: '',
           total: lit.size,
@@ -423,37 +447,55 @@ export class GrowthService {
           level: `L${row.level}`,
           evidence: '',
           approver: '',
-          note: alreadyLit
-            ? `技能等级进阶认证，当前等级 L${row.level}`
-            : `技能认证生效，当前等级 L${row.level}`,
+          note: '',
         },
       });
     }
 
+    // Merge title and skill records before counting: overlapping skills and upgrades
+    // must not produce new lighting points, regardless of record source.
+    const now = new Date();
     pending.sort((a, b) => a.at - b.at);
-    const events: SkillGrowthEvent[] = pending.map(item => ({ ...item.event, date: item.date }));
-
-    // 时间范围按真实日期过滤：近 N 个月以今天为基准回溯，全部返回完整轨迹。
-    const now = Date.now();
-    const sixMonthsAgo = now - 6 * 30.44 * 24 * 3600 * 1000;
-    const cutoff =
-      range === '6m' ? sixMonthsAgo
-        : range === '12m' ? now - 12 * 30.44 * 24 * 3600 * 1000
-          : 0;
-    const limited = cutoff > 0
-      ? pending.filter(item => item.at >= cutoff).map(item => ({ ...item.event, date: item.date }))
-      : events;
-
-    // 右上角统计：近 6 个月新增认证次数（不含职称认定），与时间范围筛选无关。
-    const recentCertCount = pending.filter(
-      item => item.event.category === '技能认证' && item.at >= sixMonthsAgo,
-    ).length;
+    const history = pending.filter(item => item.at <= now.getTime());
+    for (const item of history) {
+      const fresh = item.skills.filter(slug => !lit.has(slug));
+      fresh.forEach(slug => lit.add(slug));
+      item.freshCount = fresh.length;
+      item.event.total = lit.size;
+      item.event.date = item.date;
+      item.event.occurredAt = new Date(item.at).toISOString();
+      item.event.note = item.event.category === '职称认定'
+        ? `职称认定生效，一次性点亮 ${fresh.length} 项技能要求`
+        : fresh.length
+          ? `技能认证生效，当前等级 ${item.event.level}`
+          : `技能等级进阶认证，当前等级 ${item.event.level}`;
+    }
+    const shanghai = new Date(now.getTime() + 8 * 3600_000);
+    const monthStart = (months: number) => Date.UTC(shanghai.getUTCFullYear(), shanghai.getUTCMonth() - months + 1, 1) - 8 * 3600_000;
+    const sixMonthsAgo = monthStart(6);
+    const cutoff = range === '6m' ? sixMonthsAgo : range === '12m' ? monthStart(12) : 0;
+    const limited = history.filter(item => item.at >= cutoff).map(item => item.event);
+    // New skill items, not repeated certifications of skills already lit.
+    const recentCertCount = history.reduce((count, item) => count + (item.at >= sixMonthsAgo ? item.freshCount : 0), 0);
 
     return { events: limited, recentCertCount };
   }
 
   async getGaps(): Promise<GapListResponse> {
     const items: GapPoolItem[] = [];
+
+    if (currentEmployee().personnelRole === 'hr') {
+      const career = await this.getCareer();
+      const next = career.sequences[0]?.nodes.find(node => node.isNext);
+      for (const skill of next?.skills ?? []) {
+        if (skill.current >= skill.target) continue;
+        const gapLevels = skill.target - skill.current;
+        items.push({ source: 'career', sourceLabel: GAP_SOURCE_LABELS.career, title: skill.name,
+          description: `人力资源管理通道 · ${next?.title}要求`, filled: skill.current, target: skill.target,
+          levelRange: `L${skill.current} → L${skill.target}`, priority: gapLevels >= 3 ? 'p0' : gapLevels === 2 ? 'p1' : 'p2', gapLevels, competencies: [] });
+      }
+      return { items };
+    }
 
     // 1) 职业下一节点：按技能拆条，每条带该技能在目标等级下的子能力要求。
     try {
@@ -532,6 +574,16 @@ export class GrowthService {
    * 每条都对应一个 Gap 技能并给出可验证交付方向。
    */
   async getGapActions(): Promise<GapActionsResponse> {
+    if (currentEmployee().personnelRole === 'hr') {
+      const career = await this.getCareer();
+      const next = career.sequences[0]?.nodes.find(node => node.isNext);
+      return { items: (next?.skills ?? []).filter(skill => skill.current < skill.target).map((skill, index) => ({
+        id: `hr-${next?.id}-${index}`, kind: 'practice' as const, badge: '岗位实践',
+        title: `完成一次「${skill.name}」实务案例`, gapTitle: `${next?.title} · ${skill.name}`,
+        detail: `结合人力资源业务形成方案、执行记录与复盘材料；当前 L${skill.current}，目标 L${skill.target}`,
+        effort: '4 周', actionLabel: '创建行动',
+      })) };
+    }
     const overview = await this.judging.getOverview();
     const preferred = overview.tracks.find(track => track.slug === overview.preferredTrack) ?? overview.tracks[0];
     const next = preferred?.levels
@@ -603,18 +655,24 @@ export class GrowthService {
    */
   async getAbilityStructure(): Promise<AbilityStructureResponse> {
     const employeeSlug = currentEmployee().employeeSlug;
+    const dimensions = currentEmployee().personnelRole === 'hr' ? [
+      { name: '人力资源实务', categories: ['hr-practice'] },
+      { name: '组织管理', categories: ['org-mgmt'] },
+      { name: '协作与影响', categories: ['collaboration', 'collab-impact'] },
+      { name: '业务理解', categories: ['business'] },
+    ] : RADAR_DIMENSIONS;
     const skillRows = await this.db
       .select({ slug: skill.slug, category: skill.categorySlug })
       .from(skill);
     const categoryBySkill = new Map(skillRows.map(row => [row.slug, row.category]));
     const dimIndexByCategory = new Map<string, number>();
-    RADAR_DIMENSIONS.forEach((dim, index) => {
+    dimensions.forEach((dim, index) => {
       for (const category of dim.categories) dimIndexByCategory.set(category, index);
     });
 
     // 我的水平：有效等级（认证 / 职称覆盖 / 职称基线）在维度内取最高。
     const effective = await this.judging.effectiveLevelsForCurrentEmployee();
-    const myByDim = RADAR_DIMENSIONS.map(() => 0);
+    const myByDim = dimensions.map(() => 0);
     for (const [skillSlug, level] of effective.levels) {
       const dimIndex = dimIndexByCategory.get(categoryBySkill.get(skillSlug) ?? '');
       if (dimIndex === undefined) continue;
@@ -646,10 +704,10 @@ export class GrowthService {
       bestByMemberSkill.set(key, Math.max(bestByMemberSkill.get(key) ?? 0, row.level));
     }
 
-    const skillsByDim = RADAR_DIMENSIONS.map(dim =>
+    const skillsByDim = dimensions.map(dim =>
       new Set(skillRows.filter(row => dim.categories.includes(row.category ?? '')).map(row => row.slug)),
     );
-    const axes: AbilityAxis[] = RADAR_DIMENSIONS.map((dim, index) => {
+    const axes: AbilityAxis[] = dimensions.map((dim, index) => {
       const values = members.map(member => {
         let best = 0;
         for (const skillSlug of skillsByDim[index]) {

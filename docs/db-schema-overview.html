@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>技能树系统 · 数据模型总览 v1.0</title>
+<style>
+  :root {
+    --bg: #f5f7fc;
+    --panel: #ffffff;
+    --panel-soft: #fafbff;
+    --line: #e6eaf3;
+    --line-strong: #d5dced;
+    --text: #1f2a37;
+    --text-2: #55617a;
+    --text-3: #8892a6;
+    --primary: #3f6fe0;
+    --primary-soft: #eef3fe;
+    --radius: 14px;
+    --mono: "SFMono-Regular", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
+    --shadow: 0 1px 2px rgba(31, 42, 55, .04), 0 8px 24px -16px rgba(31, 42, 55, .18);
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    background:
+      radial-gradient(1200px 500px at 15% -10%, #eaf0ff 0%, rgba(234, 240, 255, 0) 60%),
+      radial-gradient(900px 500px at 100% 0%, #f3ecff 0%, rgba(243, 236, 255, 0) 55%),
+      var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    font-size: 14px;
+    line-height: 1.65;
+  }
+
+  /* ============ 侧边栏 ============ */
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 268px;
+    padding: 22px 16px 18px;
+    background: rgba(255, 255, 255, .82);
+    backdrop-filter: blur(14px);
+    border-right: 1px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    z-index: 20;
+    overflow-y: auto;
+  }
+
+  .brand { padding: 0 6px; }
+
+  .brand-mark {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    letter-spacing: .12em;
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  .brand-mark i {
+    width: 18px; height: 18px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #4a7df0, #7c4dff);
+    display: inline-block;
+  }
+
+  .brand h1 {
+    margin: 6px 0 2px;
+    font-size: 17px;
+    letter-spacing: -.01em;
+  }
+
+  .brand p {
+    margin: 0;
+    font-size: 12px;
+    color: var(--text-3);
+    font-family: var(--mono);
+  }
+
+  .search-wrap { position: relative; padding: 0 2px; }
+
+  .search-wrap input {
+    width: 100%;
+    padding: 9px 12px 9px 32px;
+    border: 1px solid var(--line-strong);
+    border-radius: 10px;
+    background: #fff;
+    font-size: 13px;
+    color: var(--text);
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+
+  .search-wrap input:focus {
+    border-color: #a9c1f7;
+    box-shadow: 0 0 0 3px rgba(63, 111, 224, .12);
+  }
+
+  .search-wrap svg {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px; height: 14px;
+    stroke: var(--text-3);
+    fill: none;
+    stroke-width: 2;
+  }
+
+  .search-hint {
+    font-size: 11px;
+    color: var(--text-3);
+    padding: 6px 6px 0;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  kbd {
+    font-family: var(--mono);
+    font-size: 10px;
+    border: 1px solid var(--line-strong);
+    border-bottom-width: 2px;
+    border-radius: 4px;
+    padding: 0 4px;
+    background: #fff;
+    color: var(--text-2);
+  }
+
+  nav { display: flex; flex-direction: column; gap: 2px; padding-bottom: 8px; }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 9px;
+    border-radius: 8px;
+    color: var(--text-2);
+    text-decoration: none;
+    font-size: 13px;
+    border: 1px solid transparent;
+    transition: background .15s, color .15s;
+  }
+
+  .nav-item:hover { background: #f2f5fd; color: var(--text); }
+
+  .nav-item.active {
+    background: var(--primary-soft);
+    color: #21489f;
+    border-color: #dbe6ff;
+    font-weight: 600;
+  }
+
+  .nav-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--dot, #9aa6bf);
+    flex: none;
+  }
+
+  .nav-count {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-3);
+    background: #f2f4f9;
+    border-radius: 20px;
+    padding: 0 7px;
+  }
+
+  .nav-item.active .nav-count { background: #fff; color: #21489f; }
+
+  .sidebar-foot {
+    margin-top: auto;
+    padding: 10px 8px 0;
+    border-top: 1px solid var(--line);
+    font-size: 11px;
+    color: var(--text-3);
+    line-height: 1.7;
+  }
+
+  /* ============ 主区域 ============ */
+  main {
+    margin-left: 268px;
+    padding: 40px 44px 80px;
+    max-width: 1180px;
+  }
+
+  .hero { margin-bottom: 30px; }
+
+  .eyebrow {
+    font-size: 12px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--primary);
+    font-weight: 600;
+  }
+
+  .hero h1 {
+    margin: 8px 0 10px;
+    font-size: 34px;
+    line-height: 1.25;
+    letter-spacing: -.02em;
+  }
+
+  .lede {
+    margin: 0;
+    max-width: 720px;
+    color: var(--text-2);
+    font-size: 14.5px;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+    margin: 24px 0 0;
+  }
+
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow);
+  }
+
+  .stat b {
+    display: block;
+    font-size: 24px;
+    letter-spacing: -.02em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat span {
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  /* ============ 通用区块 ============ */
+  .block {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin-bottom: 28px;
+    box-shadow: var(--shadow);
+  }
+
+  .block h2 {
+    margin: 0 0 4px;
+    font-size: 16px;
+    letter-spacing: -.01em;
+  }
+
+  .block .block-sub {
+    margin: 0 0 16px;
+    font-size: 12.5px;
+    color: var(--text-3);
+  }
+
+  .conv-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px 22px;
+  }
+
+  .conv-item {
+    display: flex;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+
+  .conv-item i {
+    flex: none;
+    width: 18px; height: 18px;
+    border-radius: 6px;
+    background: var(--primary-soft);
+    color: var(--primary);
+    font-style: normal;
+    font-family: var(--mono);
+    font-size: 11px;
+    display: grid;
+    place-items: center;
+    margin-top: 2px;
+  }
+
+  .conv-item b { color: var(--text); font-weight: 600; }
+
+  /* ============ 域区块 ============ */
+  .domain {
+    margin-bottom: 34px;
+    scroll-margin-top: 24px;
+  }
+
+  .domain-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .domain-index {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: #fff;
+    background: var(--dot);
+    border-radius: 6px;
+    padding: 1px 7px;
+    align-self: center;
+  }
+
+  .domain-head h2 {
+    margin: 0;
+    font-size: 19px;
+    letter-spacing: -.01em;
+  }
+
+  .domain-head .en {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  .domain-head .cnt {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--text-3);
+  }
+
+  .domain-desc {
+    margin: -4px 0 14px;
+    font-size: 13px;
+    color: var(--text-2);
+  }
+
+  /* ============ 表卡片 ============ */
+  .table-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(31, 42, 55, .03);
+    transition: border-color .15s, box-shadow .15s;
+  }
+
+  .table-card:hover { border-color: #cdd8ee; }
+
+  .table-card.hidden { display: none; }
+
+  .card-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .card-head:hover { background: #fbfcff; }
+
+  .tname {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: #1c3f8f;
+    background: #f0f5ff;
+    border: 1px solid #dce7ff;
+    border-radius: 7px;
+    padding: 2px 8px;
+    white-space: nowrap;
+  }
+
+  .card-title-wrap { flex: 1; min-width: 0; }
+
+  .card-purpose {
+    font-size: 12.5px;
+    color: var(--text-2);
+    margin-top: 3px;
+  }
+
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding-top: 2px;
+  }
+
+  .chip {
+    font-size: 11px;
+    border-radius: 20px;
+    padding: 1px 8px;
+    background: #f2f4f9;
+    color: var(--text-3);
+    font-family: var(--mono);
+    white-space: nowrap;
+  }
+
+  .chip.pages { font-family: var(--sans); background: #f7f2ff; color: #6b46c1; }
+
+  .chevron {
+    width: 16px; height: 16px;
+    stroke: var(--text-3);
+    fill: none;
+    stroke-width: 2;
+    transition: transform .18s;
+    flex: none;
+    margin-top: 4px;
+  }
+
+  .table-card.open .chevron { transform: rotate(90deg); }
+
+  .card-body {
+    display: none;
+    border-top: 1px solid var(--line);
+    background: var(--panel-soft);
+  }
+
+  .table-card.open .card-body { display: block; }
+
+  table.fields {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  table.fields th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--text-3);
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    background: #f6f8fd;
+    border-bottom: 1px solid var(--line);
+  }
+
+  table.fields td {
+    padding: 8px 16px;
+    border-bottom: 1px solid #eef1f8;
+    vertical-align: top;
+    color: var(--text-2);
+  }
+
+  table.fields tr:last-child td { border-bottom: none; }
+
+  table.fields td.f-name {
+    font-family: var(--mono);
+    color: #21324d;
+    white-space: nowrap;
+    width: 210px;
+  }
+
+  table.fields td.f-type {
+    font-family: var(--mono);
+    color: #7a5c1e;
+    width: 150px;
+    white-space: nowrap;
+    font-size: 11.5px;
+  }
+
+  .key-tag {
+    display: inline-block;
+    margin-left: 6px;
+    font-size: 9.5px;
+    font-family: var(--mono);
+    padding: 0 4px;
+    border-radius: 4px;
+    vertical-align: 1px;
+    letter-spacing: .04em;
+  }
+
+  .key-PK { background: #fff1e6; color: #b45309; border: 1px solid #fde3c4; }
+  .key-UK { background: #eefaf3; color: #0f7a53; border: 1px solid #cfeee0; }
+  .key-FK { background: #eef3fe; color: #2f5cc0; border: 1px solid #d9e4ff; }
+
+  .card-foot {
+    padding: 9px 16px;
+    border-top: 1px dashed var(--line);
+    font-size: 11.5px;
+    color: var(--text-3);
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: #fff;
+  }
+
+  .card-foot b { color: var(--text-2); font-weight: 600; }
+
+  .empty {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-3);
+    background: var(--panel);
+    border: 1px dashed var(--line-strong);
+    border-radius: 12px;
+  }
+
+  footer {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    color: var(--text-3);
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .btn {
+    border: 1px solid var(--line-strong);
+    background: #fff;
+    color: var(--text-2);
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background .15s, border-color .15s;
+  }
+
+  .btn:hover { background: #f4f7ff; border-color: #c3d2f0; }
+
+  .result-bar {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: #fff8e8;
+    border: 1px solid #f4e3ba;
+    color: #8a6414;
+    border-radius: 9px;
+    font-size: 12.5px;
+    margin-bottom: 18px;
+  }
+
+  .result-bar.show { display: flex; }
+
+  .result-bar button {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: #8a6414;
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+
+  mark {
+    background: #fff1a8;
+    color: inherit;
+    border-radius: 2px;
+    padding: 0 1px;
+  }
+
+  @media (max-width: 980px) {
+    .sidebar {
+      position: static;
+      width: auto;
+      inset: auto;
+      border-right: none;
+      border-bottom: 1px solid var(--line);
+      max-height: none;
+    }
+    nav { flex-direction: row; flex-wrap: wrap; }
+    .nav-item { flex: 0 0 auto; }
+    .nav-count { margin-left: 4px; }
+    main { margin-left: 0; padding: 26px 18px 60px; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .conv-grid { grid-template-columns: 1fr; }
+    .hero h1 { font-size: 26px; }
+    table.fields td.f-name { width: auto; }
+    table.fields td.f-type { width: auto; }
+    .card-meta .chip.pages { display: none; }
+  }
+
+  @media print {
+    .sidebar, .toolbar, .search-wrap, .search-hint, .result-bar { display: none; }
+    main { margin: 0; padding: 0; max-width: none; }
+    body { background: #fff; }
+    .table-card { break-inside: avoid; box-shadow: none; }
+    .card-body { display: block !important; }
+    .chevron { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brand">
+    <div class="brand-mark"><i></i>SKILL TREE · DATA MODEL</div>
+    <h1>数据模型总览</h1>
+    <p>v1.0 / 2026-10-22</p>
+  </div>
+
+  <div class="search-wrap">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>
+    <input id="search" type="search" placeholder="搜索表名、字段、说明" autocomplete="off">
+  </div>
+  <div class="search-hint"><span>支持表名 / 字段 / 说明</span><span><kbd>/</kbd> 聚焦</span></div>
+
+  <nav id="nav"></nav>
+
+  <div class="sidebar-foot">
+    PostgreSQL 单库 · 13 个域 · 40 张表<br>
+    slug 软关联，时间统一 timestamptz
+  </div>
+</aside>
+
+<main>
+  <header class="hero">
+    <div class="eyebrow">技能树系统 · 数据库设计</div>
+    <h1>数据模型总览</h1>
+    <p class="lede">
+      覆盖成长概览、技能池、技能详情、主动申请、个人发展计划、认证与复核、通知中心、L2 考核、标准配置，以及管理侧的团队、人才、继任、组队与画像页面。
+      按业务域分组，每张表标注用途、字段职责与唯一键约束。
+    </p>
+
+    <div class="stats">
+      <div class="stat"><b>13</b><span>业务域</span></div>
+      <div class="stat"><b>40</b><span>数据表</span></div>
+      <div class="stat"><b id="fieldTotal">—</b><span>业务字段</span></div>
+      <div class="stat"><b>15</b><span>覆盖页面</span></div>
+    </div>
+  </header>
+
+  <section class="block">
+    <div style="display:flex;align-items:baseline;gap:12px;">
+      <h2>全局约定</h2>
+      <div class="toolbar">
+        <button class="btn" id="expandAll">全部展开</button>
+        <button class="btn" id="collapseAll">全部收起</button>
+      </div>
+    </div>
+    <p class="block-sub">下列约定适用于所有表，各表字段不再重复列出。</p>
+    <div class="conv-grid">
+      <div class="conv-item"><i>1</i><div><b>系统列</b>：所有表含 id（uuid 主键）、slug（业务键）、created_at、created_by、updated_at、updated_by。</div></div>
+      <div class="conv-item"><i>2</i><div><b>软关联</b>：跨表通过 slug 关联，不加数据库外键，便于数据演进与回滚。</div></div>
+      <div class="conv-item"><i>3</i><div><b>时间</b>：全部使用 timestamptz，不存字符串时间标签。</div></div>
+      <div class="conv-item"><i>4</i><div><b>枚举</b>：以 varchar 存储并由应用层校验，不设硬性 CHECK 上限。</div></div>
+      <div class="conv-item"><i>5</i><div><b>标准快照</b>：判断、出题、审批展示只读发布快照，不直读活动标准表。</div></div>
+      <div class="conv-item"><i>6</i><div><b>状态字段</b>：流程状态机在应用层收敛，表只存当前态与关键时间点。</div></div>
+    </div>
+  </section>
+
+  <div class="result-bar" id="resultBar">
+    <span id="resultText"></span>
+    <button id="clearSearch">清除筛选</button>
+  </div>
+
+  <div id="content"></div>
+
+  <footer>
+    <span>技能树系统 · 数据模型总览 v1.0 · 2026-10-22</span>
+    <span>13 域 / 40 表 · PostgreSQL 16 · 点击表头可展开字段</span>
+  </footer>
+</main>
+
+<script>
+const SCHEMA = [
+  {
+    id: "org",
+    name: "账号与员工",
+    en: "identity",
+    color: "#3f6fe0",
+    desc: "登录账号、员工主数据与主管/专家关系，是权限路由与审批链的基础。",
+    tables: [
+      {
+        name: "account",
+        purpose: "登录账号，承载密码登录与飞书身份绑定状态",
+        pages: ["登录", "顶栏"],
+        fields: [
+          ["slug", "varchar(64)", "账号标识，跨表引用键", "UK"],
+          ["username", "varchar(64)", "登录名，唯一，登录接口入参", "UK"],
+          ["password_hash", "varchar(255)", "Argon2id 哈希，明文不落库"],
+          ["employee_slug", "varchar(64)", "关联员工，一账号对应一员工", "FK"],
+          ["access_role", "varchar(16)", "工作台角色 employee / manager，管理员由组织关系判定"],
+          ["feishu_linked", "boolean", "是否已绑定飞书身份，登录页与顶栏展示"],
+          ["last_login_at", "timestamptz", "最近登录时间，异常登录排查"]
+        ]
+      },
+      {
+        name: "employee",
+        purpose: "员工主数据，全系统展示与聚合的基准",
+        pages: ["成长概览", "画像", "团队概览"],
+        fields: [
+          ["slug", "varchar(64)", "员工标识，全系统关联键", "UK"],
+          ["name", "varchar(64)", "姓名，卡片与列表展示"],
+          ["avatar", "varchar(16)", "头像字符，无图时以首字渲染"],
+          ["tone", "varchar(16)", "头像色调键，前端配色"],
+          ["role", "varchar(64)", "岗位名称，画像与卡片副标题"],
+          ["org", "varchar(64)", "所属组织，团队聚合与偏好序列推断"],
+          ["department", "varchar(64)", "部门，团队概览分组维度"],
+          ["hire_date", "date", "入职日期，司龄计算"],
+          ["job_grade", "varchar(16)", "职级，画像基本信息"],
+          ["work_location", "varchar(64)", "工作地，画像基本信息"],
+          ["summary", "text", "个人简介，画像首屏与概览摘要"],
+          ["preferred_track", "varchar(64)", "偏好技术序列，概览默认选中与候选去重"]
+        ]
+      },
+      {
+        name: "org_relation",
+        purpose: "主管、领域专家、专家组成员与领域负责人关系",
+        pages: ["认证与复核", "标准配置"],
+        fields: [
+          ["slug", "varchar(64)", "关系记录标识", "UK"],
+          ["employee_slug", "varchar(64)", "员工", "FK"],
+          ["relation_type", "varchar(16)", "manager 主管 / expert 专家 / panel 专家组成员 / domain_owner 领域负责人"],
+          ["target_slug", "varchar(64)", "关系对方，其主管或专家本人", "FK"],
+          ["domain", "varchar(64)", "领域标识，取三条序列 slug，仅专家类关系使用"],
+          ["effective_from", "timestamptz", "生效时间"],
+          ["effective_to", "timestamptz", "失效时间，null 表示当前有效"],
+          ["source", "varchar(16)", "来源 seed / admin"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "skill",
+    name: "技能字典",
+    en: "skill catalog",
+    color: "#2f9e8f",
+    desc: "技能分类、技能定义与 L1~L5 行为锚点，支撑技能池星图与审批核对。",
+    tables: [
+      {
+        name: "skill_category",
+        purpose: "技能分类树，技能池左侧分组",
+        pages: ["技能池"],
+        fields: [
+          ["slug", "varchar(64)", "分类标识", "UK"],
+          ["name", "varchar(64)", "分类名称，如云原生、数据工程"],
+          ["kind", "varchar(16)", "professional 专业 / generic 通用"],
+          ["sort", "int", "展示排序"]
+        ]
+      },
+      {
+        name: "skill",
+        purpose: "技能主数据，认证与职称要求的对象",
+        pages: ["技能池", "技能详情"],
+        fields: [
+          ["slug", "varchar(64)", "技能标识", "UK"],
+          ["name", "varchar(64)", "技能名称"],
+          ["category_slug", "varchar(64)", "所属分类", "FK"],
+          ["description", "text", "技能说明，技能详情页头部"],
+          ["status", "varchar(16)", "published / archived，技能池只展示已发布"]
+        ]
+      },
+      {
+        name: "skill_level_anchor",
+        purpose: "技能五级行为锚点，审批与申诉的判定依据",
+        pages: ["技能详情", "标准配置"],
+        fields: [
+          ["skill_slug", "varchar(64)", "所属技能", "FK"],
+          ["level", "int", "等级 1~5，与技能唯一组合", "UK"],
+          ["anchor", "text", "该级行为锚点描述"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "comp",
+    name: "子能力",
+    en: "competency",
+    color: "#7c4dff",
+    desc: "把技能拆到可评估、可考核的最小单元，是申请行与考卷的粒度。",
+    tables: [
+      {
+        name: "competency",
+        purpose: "子能力定义，认证的最小单元",
+        pages: ["技能详情", "主动申请"],
+        fields: [
+          ["slug", "varchar(64)", "子能力标识", "UK"],
+          ["code", "varchar(32)", "编码，如 K8S-SCHEDULING"],
+          ["name", "varchar(64)", "名称，如 Pod 调度与亲和性"],
+          ["description", "text", "定义说明"],
+          ["kind", "varchar(16)", "professional 序列专业 / generic 通用"],
+          ["status", "varchar(16)", "draft / published / archived"]
+        ]
+      },
+      {
+        name: "competency_level",
+        purpose: "子能力各级锚点、证据要求与是否必考",
+        pages: ["技能详情", "标准配置"],
+        fields: [
+          ["competency_slug", "varchar(64)", "所属子能力", "FK"],
+          ["level", "int", "等级 1~5，与子能力唯一组合", "UK"],
+          ["anchor", "text", "该级行为锚点"],
+          ["evidence_requirement", "jsonb", "证据要求数组，材料满足度判定的依据"],
+          ["exam_required", "boolean", "该级是否必考，决定是否进入 L2 考核"]
+        ]
+      },
+      {
+        name: "skill_competency",
+        purpose: "某标准版本下，技能某级要求哪些子能力达到几级",
+        pages: ["技能详情", "标准配置"],
+        fields: [
+          ["skill_slug", "varchar(64)", "技能", "FK"],
+          ["level", "int", "技能等级 1~5"],
+          ["competency_slug", "varchar(64)", "要求的子能力", "FK"],
+          ["standard_version_slug", "varchar(64)", "所属标准版本", "FK"],
+          ["required_level", "int", "子能力最低要求等级"],
+          ["weight", "int", "权重，默认 1，预留"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "title",
+    name: "职称序列",
+    en: "title track",
+    color: "#d9822b",
+    desc: "三条技术序列、每序列四层职称，以及每层要求的技能清单。",
+    tables: [
+      {
+        name: "title_track",
+        purpose: "职称序列，概览页序列切换的数据源",
+        pages: ["成长概览", "标准配置"],
+        fields: [
+          ["slug", "varchar(64)", "序列标识 software / platform / ai", "UK"],
+          ["name", "varchar(64)", "序列名称"],
+          ["description", "text", "序列定位说明，概览页切换文案"],
+          ["status", "varchar(16)", "published / archived"]
+        ]
+      },
+      {
+        name: "title_level",
+        purpose: "序列内的职称层级",
+        pages: ["成长概览", "标准配置"],
+        fields: [
+          ["track_slug", "varchar(64)", "所属序列", "FK"],
+          ["level_order", "int", "层序，结构允许扩展，与序列唯一"],
+          ["level_code", "varchar(16)", "层级代码 T1~T4"],
+          ["name", "varchar(64)", "层级名称，按序列区分"],
+          ["standard_version_slug", "varchar(64)", "所属标准版本", "FK"]
+        ]
+      },
+      {
+        name: "title_requirement",
+        purpose: "职称层要求的技能与等级，增量语义只记本层新增项",
+        pages: ["成长概览", "标准配置"],
+        fields: [
+          ["title_level_id", "uuid", "所属职称层", "FK"],
+          ["skill_slug", "varchar(64)", "要求技能", "FK"],
+          ["required_level", "int", "最低技能等级"],
+          ["is_auto", "boolean", "true 自动认定 / false 需人工审批，决定申请走向"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "std",
+    name: "标准版本",
+    en: "standard version",
+    color: "#c2410c",
+    desc: "标准的三级发布与全量快照，保证历史认证不被后续编辑污染。",
+    tables: [
+      {
+        name: "standard_version",
+        purpose: "标准版本与发布快照，判断与出题的唯一读取源",
+        pages: ["标准配置", "主动申请"],
+        fields: [
+          ["slug", "varchar(64)", "版本标识，如 v2026-q4", "UK"],
+          ["version_no", "varchar(32)", "展示用版本号"],
+          ["status", "varchar(16)", "draft / reviewing / published / archived，对应三级发布"],
+          ["source", "varchar(16)", "refined 人工精编 / ai-draft AI 草稿 / assumed 演示假定"],
+          ["effective_at", "timestamptz", "生效时间"],
+          ["drafted_by", "varchar(64)", "起草人（领域专家）", "FK"],
+          ["reviewed_by", "varchar(64)", "审核人（领域负责人）", "FK"],
+          ["published_by", "varchar(64)", "发布人（管理员）", "FK"],
+          ["change_summary", "text", "变更说明，版本对比展示"],
+          ["snapshot", "jsonb", "发布时全量快照，序列/层级/要求/子能力要求"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "cert",
+    name: "员工认证状态",
+    en: "certification state",
+    color: "#0e9f6e",
+    desc: "员工已获得的技能、子能力与职称，是进度、Gap 与资格判定的输入。",
+    tables: [
+      {
+        name: "employee_skill",
+        purpose: "员工技能认证，技能池星图与等级进度",
+        pages: ["技能池", "成长概览"],
+        fields: [
+          ["slug", "varchar(64)", "认证记录标识", "UK"],
+          ["employee_slug", "varchar(64)", "员工", "FK"],
+          ["skill_slug", "varchar(64)", "技能", "FK"],
+          ["level", "int", "已认证等级，同人同技能可多级并存"],
+          ["certified_at", "timestamptz", "认证生效时间"],
+          ["certified_via", "varchar(24)", "ai-material / exam / approval-l3 / approval-l4 / approval-l5 / migrated"],
+          ["source_application_slug", "varchar(64)", "来源申请单，可追溯", "FK"],
+          ["status", "varchar(16)", "active / pending-review / suspended / revoked"],
+          ["last_used_at", "timestamptz", "最近实践时间，驱动一年复核扫描"],
+          ["review_due_at", "timestamptz", "待复核标记时间"]
+        ]
+      },
+      {
+        name: "employee_competency",
+        purpose: "员工子能力认证，申请行的免审复用来源",
+        pages: ["技能详情", "主动申请"],
+        fields: [
+          ["slug", "varchar(64)", "认证记录标识", "UK"],
+          ["employee_slug", "varchar(64)", "员工", "FK"],
+          ["competency_slug", "varchar(64)", "子能力", "FK"],
+          ["level", "int", "已认证等级"],
+          ["certified_at", "timestamptz", "认证生效时间"],
+          ["certified_via", "varchar(24)", "认证途径，与技能认证一致"],
+          ["source_application_slug", "varchar(64)", "来源申请单", "FK"],
+          ["status", "varchar(16)", "active / pending-review / suspended / revoked"],
+          ["last_used_at", "timestamptz", "最近实践时间"],
+          ["review_due_at", "timestamptz", "待复核标记时间"]
+        ]
+      },
+      {
+        name: "employee_title",
+        purpose: "员工持有的职称，支持多职称并存",
+        pages: ["成长概览", "认证与复核"],
+        fields: [
+          ["slug", "varchar(64)", "持有记录标识", "UK"],
+          ["employee_slug", "varchar(64)", "员工", "FK"],
+          ["title_level_id", "uuid", "职称层", "FK"],
+          ["certified_at", "timestamptz", "获得时间"],
+          ["source_application_slug", "varchar(64)", "来源申请单", "FK"],
+          ["status", "varchar(16)", "active / suspended / revoked"],
+          ["is_cross_level", "boolean", "是否跨级获得，跨级需独立专家复核"],
+          ["is_cross_path", "boolean", "是否跨路径获得"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "app",
+    name: "申请流程",
+    en: "application",
+    color: "#2563eb",
+    desc: "一次认证的完整载体：申请单、子能力行、证据与材料文件。",
+    tables: [
+      {
+        name: "application",
+        purpose: "申请单，技能认证与职称评定共用",
+        pages: ["主动申请", "认证与复核", "申请详情"],
+        fields: [
+          ["slug", "varchar(64)", "申请单标识", "UK"],
+          ["applicant_slug", "varchar(64)", "申请人", "FK"],
+          ["target_kind", "varchar(16)", "skill 技能认证 / title 职称评定"],
+          ["target_skill_slug", "varchar(64)", "技能申请的目标技能", "FK"],
+          ["target_level", "int", "技能申请的目标等级"],
+          ["target_title_level_id", "uuid", "职称申请的目标层", "FK"],
+          ["is_cross_level", "boolean", "目标层高出已持有两级及以上"],
+          ["is_cross_path", "boolean", "跨序列申请"],
+          ["standard_version_slug", "varchar(64)", "提交时锁定的标准版本", "FK"],
+          ["status", "varchar(24)", "draft / ai-evaluating / pending-exam / in-exam / pending-approval / approved / rejected / returned / closed"],
+          ["submitted_at", "timestamptz", "提交时间，null 表示草稿"],
+          ["closed_at", "timestamptz", "关闭时间"],
+          ["rejected_reason", "text", "驳回原因，审批页与申诉页展示"],
+          ["rejected_at", "timestamptz", "驳回时间，15 天冷却起点"],
+          ["appeal_count", "int", "已用申诉次数，上限 2"],
+          ["summary_statement", "text", "综合实践说明，职称申请必填"]
+        ]
+      },
+      {
+        name: "application_item",
+        purpose: "申请行，按子能力逐项评估与推进",
+        pages: ["主动申请", "L2 考核", "认证与复核"],
+        fields: [
+          ["application_slug", "varchar(64)", "所属申请单", "FK"],
+          ["competency_slug", "varchar(64)", "子能力，与申请单唯一组合", "UK"],
+          ["required_level", "int", "该项要求等级"],
+          ["current_status", "varchar(24)", "met-by-cert / met-by-material / pending-exam / exam-passed / exam-failed / pending-approval / approved / rejected"],
+          ["met_by_competency_id", "uuid", "已有认证复用时指向来源记录", "FK"],
+          ["ai_evaluation", "jsonb", "AI 逐项评估结果：结论、理由、缺口、追问、模型版本"]
+        ]
+      },
+      {
+        name: "evidence",
+        purpose: "证据材料，支持事实引用、上传文件与外链三种来源",
+        pages: ["技能详情", "主动申请"],
+        fields: [
+          ["slug", "varchar(64)", "证据标识", "UK"],
+          ["owner_employee_slug", "varchar(64)", "所有者", "FK"],
+          ["kind", "varchar(16)", "fact-ref 事实引用 / upload 上传 / external-link 外链"],
+          ["fact_event_slug", "varchar(64)", "fact-ref 时关联的事实事件", "FK"],
+          ["file_id", "uuid", "upload 时关联的文件", "FK"],
+          ["external_url", "varchar(512)", "external-link 时的外链地址"],
+          ["title", "varchar(255)", "证据标题"],
+          ["description", "text", "证据说明"],
+          ["ai_evaluation_status", "varchar(16)", "pending / evaluating / satisfied / unsatisfied / error"],
+          ["ai_evaluation", "jsonb", "材料满足度评估结果"]
+        ]
+      },
+      {
+        name: "application_evidence",
+        purpose: "申请行与证据的关联，决定进度计入哪些项",
+        pages: ["主动申请"],
+        fields: [
+          ["application_item_id", "uuid", "申请行", "FK"],
+          ["evidence_slug", "varchar(64)", "证据，与申请行唯一组合", "UK"],
+          ["sort", "int", "展示顺序"]
+        ]
+      },
+      {
+        name: "file",
+        purpose: "上传文件元数据与文本抽取结果",
+        pages: ["主动申请"],
+        fields: [
+          ["slug", "varchar(64)", "文件标识", "UK"],
+          ["uploader_employee_slug", "varchar(64)", "上传人", "FK"],
+          ["original_filename", "varchar(255)", "原始文件名"],
+          ["mime_type", "varchar(64)", "类型，白名单 PDF / DOCX / TXT / MD / 图片"],
+          ["size_bytes", "int", "文件大小，单文件上限 20MB"],
+          ["storage_path", "varchar(512)", "受控存储目录相对路径"],
+          ["extracted_text", "text", "抽取文本，供 AI 评估引用"],
+          ["extraction_status", "varchar(16)", "pending / ok / failed"],
+          ["extraction_error", "text", "抽取失败原因"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "exam",
+    name: "考核",
+    en: "L2 exam",
+    color: "#9333ea",
+    desc: "L2 考核会话、AI 出题与逐题评分，含服务端计时与防作弊计数。",
+    tables: [
+      {
+        name: "exam",
+        purpose: "考核会话，一场子能力考核一条",
+        pages: ["L2 考核作答"],
+        fields: [
+          ["slug", "varchar(64)", "考核标识", "UK"],
+          ["application_item_id", "uuid", "对应子能力行", "FK"],
+          ["employee_slug", "varchar(64)", "考生，冗余便于查询", "FK"],
+          ["attempt_no", "int", "第几次，与子能力行唯一组合", "UK"],
+          ["status", "varchar(16)", "in-progress / submitted / grading / passed / failed / terminated"],
+          ["started_at", "timestamptz", "服务端记录的开始时间"],
+          ["duration_seconds", "int", "限时时长，默认 3600 秒"],
+          ["deadline_at", "timestamptz", "截止时间，超时自动提交"],
+          ["last_heartbeat_at", "timestamptz", "心跳，用于崩溃恢复判定"],
+          ["resume_token", "varchar(64)", "五分钟恢复窗口凭证"],
+          ["resume_expires_at", "timestamptz", "恢复窗口过期时间"],
+          ["page_leave_count", "int", "切屏次数，达到两次终止"],
+          ["terminated_reason", "varchar(32)", "second-leave / closed / timeout"],
+          ["total_score", "int", "总分，满分 100"],
+          ["passed", "boolean", "是否达到 80 分"],
+          ["next_attempt_available_at", "timestamptz", "补考开放时间，默认 24 小时后"],
+          ["demo_skip_cooldown", "boolean", "演示用跳过冷却标记"]
+        ]
+      },
+      {
+        name: "exam_question",
+        purpose: "考卷题目与出题快照",
+        pages: ["L2 考核作答", "认证与复核"],
+        fields: [
+          ["exam_slug", "varchar(64)", "所属考核", "FK"],
+          ["sort", "int", "题序 1~5，与考核唯一组合", "UK"],
+          ["question_kind", "varchar(16)", "objective 客观三题 / subjective 简答两题"],
+          ["question_text", "text", "题干"],
+          ["options", "jsonb", "客观题选项数组"],
+          ["correct_answer", "varchar(16)", "客观题正确答案"],
+          ["reference_answer", "text", "简答题参考答案"],
+          ["max_score", "int", "单题分值，默认 20"],
+          ["generated_by", "varchar(16)", "ai / manual"],
+          ["prompt_snapshot", "jsonb", "出题提示词、模型与版本，用于审计与重放"]
+        ]
+      },
+      {
+        name: "exam_answer",
+        purpose: "作答内容与评分结果，自动保存",
+        pages: ["L2 考核作答", "认证与复核"],
+        fields: [
+          ["question_id", "uuid", "所属题目，一题一答", "UK"],
+          ["answer_text", "text", "作答内容，客观题为选项键"],
+          ["saved_at", "timestamptz", "最近保存时间"],
+          ["score", "int", "得分"],
+          ["grading_feedback", "text", "评分依据，简答必填"],
+          ["graded_by", "varchar(16)", "ai / expert"],
+          ["graded_at", "timestamptz", "评分时间"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "review",
+    name: "审批 · 申诉 · 复核",
+    en: "approval & appeal",
+    color: "#b45309",
+    desc: "L3-L5 审批链、两次申诉与一年无实践复核，全部动作留痕。",
+    tables: [
+      {
+        name: "approval_task",
+        purpose: "审批任务，串行步骤与专家组成员各占一行",
+        pages: ["认证与复核", "审批详情"],
+        fields: [
+          ["slug", "varchar(64)", "任务标识", "UK"],
+          ["application_slug", "varchar(64)", "所属申请单", "FK"],
+          ["task_kind", "varchar(32)", "l3-manager / l4-manager / l4-expert / l5-manager / l5-expert / l5-panel / cross-level-expert / appeal-first / appeal-second / title-approval / recertification"],
+          ["assignee_employee_slug", "varchar(64)", "审批人，null 表示待分配", "FK"],
+          ["step_order", "int", "串行步骤序号"],
+          ["status", "varchar(16)", "pending / waiting-assign / approved / rejected / returned / skipped"],
+          ["decision_comment", "text", "审批意见，退回与驳回必填"],
+          ["decided_at", "timestamptz", "决定时间"],
+          ["waiting_assign_reason", "varchar(32)", "manager-missing / conflict-of-interest"]
+        ]
+      },
+      {
+        name: "appeal",
+        purpose: "申诉记录，覆盖材料、考题与审批结论三类",
+        pages: ["认证与复核", "申诉详情"],
+        fields: [
+          ["slug", "varchar(64)", "申诉标识", "UK"],
+          ["application_slug", "varchar(64)", "原申请单", "FK"],
+          ["appeal_no", "int", "第几次申诉，与申请单唯一组合", "UK"],
+          ["appeal_kind", "varchar(24)", "l1-l2-material 材料 / l2-exam 考题 / l3-l5-decision 审批结论"],
+          ["trigger_task_id", "uuid", "引发申诉的审批任务", "FK"],
+          ["appeal_reason", "text", "员工填写的申诉理由"],
+          ["employee_response", "text", "补充说明"],
+          ["ai_questions", "jsonb", "AI 生成的针对性追问，材料申诉使用"],
+          ["status", "varchar(16)", "pending / approved / rejected"],
+          ["decided_kind", "varchar(16)", "ai / manager / expert，区分判定方"],
+          ["decided_by", "varchar(64)", "判定人", "FK"],
+          ["decision_comment", "text", "判定结论说明"],
+          ["decided_at", "timestamptz", "判定时间"]
+        ]
+      },
+      {
+        name: "recertification",
+        purpose: "待复核记录，一年无实践触发但不自动降级",
+        pages: ["认证与复核", "技能池"],
+        fields: [
+          ["slug", "varchar(64)", "复核记录标识", "UK"],
+          ["target_kind", "varchar(16)", "competency / skill"],
+          ["target_id", "uuid", "指向对应员工认证记录", "FK"],
+          ["employee_slug", "varchar(64)", "员工", "FK"],
+          ["triggered_at", "timestamptz", "标记时间，最近实践时间加一年"],
+          ["status", "varchar(16)", "pending / in-review / cleared / failed"],
+          ["cleared_at", "timestamptz", "解除时间"],
+          ["cleared_reason", "varchar(32)", "new-evidence / exam-passed / approval-passed / failed-no-demote"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "notify",
+    name: "通知",
+    en: "notification",
+    color: "#e11d48",
+    desc: "站内通知与推荐冷却，兼顾飞书推送标记。",
+    tables: [
+      {
+        name: "notification",
+        purpose: "站内通知，通知中心列表与未读计数",
+        pages: ["通知中心", "全局顶栏"],
+        fields: [
+          ["slug", "varchar(64)", "通知标识", "UK"],
+          ["recipient_employee_slug", "varchar(64)", "收件人", "FK"],
+          ["kind", "varchar(32)", "candidate-evidence / candidate-application / exam-ready / exam-result / approval-pending / approval-result / appeal-result / recertification-due / evidence-auth-request / system-error"],
+          ["title", "varchar(255)", "通知标题"],
+          ["body", "text", "通知正文"],
+          ["link", "varchar(255)", "跳转路由，飞书卡片深链复用"],
+          ["payload", "jsonb", "结构化参数，内联操作按钮使用"],
+          ["read_at", "timestamptz", "已读时间"],
+          ["dismissed_at", "timestamptz", "明确拒绝时间，写入冷却"],
+          ["sent_via_feishu", "boolean", "是否已推送到飞书，未配置时为模拟发送"]
+        ]
+      },
+      {
+        name: "notification_cooldown",
+        purpose: "候选推荐冷却，三个月内不再推送同一目标",
+        pages: ["通知中心", "成长概览"],
+        fields: [
+          ["employee_slug", "varchar(64)", "员工", "FK"],
+          ["dismissed_key", "varchar(128)", "被拒绝的候选键，与员工唯一组合", "UK"],
+          ["dismissed_at", "timestamptz", "拒绝时间"],
+          ["cooldown_until", "timestamptz", "冷却结束时间，拒绝后三个月"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "fact",
+    name: "事实中心",
+    en: "fact center",
+    color: "#0891b2",
+    desc: "工作事实的归集与增量同步，是成长曲线与 AI 引用的出处。",
+    tables: [
+      {
+        name: "fact_event",
+        purpose: "事实事件，成长曲线与 AI 逐字引用的数据源",
+        pages: ["成长概览", "技能详情"],
+        fields: [
+          ["slug", "varchar(64)", "事实标识，与来源版本唯一组合", "UK"],
+          ["source_version", "varchar(32)", "来源版本，幂等去重键之一", "UK"],
+          ["employee_slug", "varchar(64)", "所属员工", "FK"],
+          ["event_kind", "varchar(24)", "project-participation / training-complete / certificate-obtained / work-output"],
+          ["occurred_at", "timestamptz", "事实发生时间，成长曲线横轴"],
+          ["source", "varchar(32)", "来源系统"],
+          ["change_kind", "varchar(16)", "created / updated / revoked"],
+          ["payload", "jsonb", "事实详情，AI 引用原文"],
+          ["related_skill_slugs", "jsonb", "预判相关技能，候选推荐使用"],
+          ["permission_scope", "jsonb", "访问控制，临时授权到期回收"],
+          ["ingested_at", "timestamptz", "进入本系统时间"],
+          ["processed_at", "timestamptz", "判断层处理完成时间"]
+        ]
+      },
+      {
+        name: "fact_sync_log",
+        purpose: "增量同步日志，监控与重试依据",
+        pages: ["成长概览（数据更新时间）"],
+        fields: [
+          ["sync_kind", "varchar(16)", "scheduled / manual / realtime"],
+          ["started_at", "timestamptz", "开始时间"],
+          ["finished_at", "timestamptz", "结束时间"],
+          ["events_fetched", "int", "拉取条数"],
+          ["events_processed", "int", "处理成功条数"],
+          ["error", "text", "失败原因"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "growth",
+    name: "成长发展",
+    en: "idp",
+    color: "#65a30d",
+    desc: "个人发展计划、行动项与学习资源，与判断层 Gap 实时联动。",
+    tables: [
+      {
+        name: "idp_plan",
+        purpose: "个人发展计划，一人多版本取最新",
+        pages: ["个人发展计划", "成长概览"],
+        fields: [
+          ["slug", "varchar(64)", "计划标识", "UK"],
+          ["employee_slug", "varchar(64)", "员工", "FK"],
+          ["status", "varchar(16)", "draft / active / archived"],
+          ["positioning", "jsonb", "现状定位：现角色、目标角色、就绪度、优势与短板"],
+          ["generated_by", "varchar(16)", "ai / manual"],
+          ["version_no", "int", "版本号，导出与历史对比使用"]
+        ]
+      },
+      {
+        name: "idp_action",
+        purpose: "行动项，按阶段推进并可关联证据",
+        pages: ["个人发展计划"],
+        fields: [
+          ["plan_slug", "varchar(64)", "所属计划", "FK"],
+          ["sort", "int", "展示顺序"],
+          ["phase", "varchar(16)", "month-1 / month-2-3 / quarter-2"],
+          ["kind", "varchar(16)", "learn 学习 / practice 实践 / mentor 导师 / deliver 交付"],
+          ["title", "varchar(128)", "行动标题"],
+          ["detail", "text", "行动说明"],
+          ["effort", "varchar(32)", "投入说明"],
+          ["gap_title", "varchar(128)", "对应 Gap，与判断层联动"],
+          ["progress_status", "varchar(16)", "todo / doing / done"],
+          ["evidence_slug", "varchar(64)", "完成后可提交的证据", "FK"]
+        ]
+      },
+      {
+        name: "learning_resource",
+        purpose: "学习资源库，Gap 到资源的推荐匹配",
+        pages: ["个人发展计划", "成长概览"],
+        fields: [
+          ["slug", "varchar(64)", "资源标识", "UK"],
+          ["kind", "varchar(16)", "course / project / training"],
+          ["title", "varchar(255)", "资源名称"],
+          ["description", "text", "资源说明"],
+          ["url", "varchar(512)", "资源链接"],
+          ["targets_skill_slugs", "jsonb", "对应技能，推荐匹配键"],
+          ["estimated_effort", "varchar(32)", "投入说明"],
+          ["evidence_template", "text", "完成后可提交的证据类型"],
+          ["is_demo", "boolean", "是否演示数据"],
+          ["status", "varchar(16)", "active / archived"]
+        ]
+      }
+    ]
+  },
+  {
+    id: "mgmt",
+    name: "管理侧视图",
+    en: "manager view",
+    color: "#64748b",
+    desc: "人才收藏、继任与组队，MVP 阶段以演示种子为主并在页面标注。",
+    tables: [
+      {
+        name: "talent_shortlist",
+        purpose: "保存的人才需求与候选人快照",
+        pages: ["人才搜索"],
+        fields: [
+          ["owner_manager_slug", "varchar(64)", "需求创建人", "FK"],
+          ["name", "varchar(128)", "需求名称"],
+          ["conditions", "jsonb", "筛选条件快照：技能、等级、组织"],
+          ["items", "jsonb", "候选人快照，避免条件变化导致列表漂移"],
+          ["saved_at", "timestamptz", "保存时间"]
+        ]
+      },
+      {
+        name: "succession_role",
+        purpose: "继任岗位与健康度，演示种子",
+        pages: ["梯队与继任"],
+        fields: [
+          ["slug", "varchar(64)", "岗位标识", "UK"],
+          ["title", "varchar(128)", "岗位名称"],
+          ["family", "varchar(64)", "岗位族"],
+          ["incumbent", "varchar(64)", "在任者", "FK"],
+          ["health", "varchar(16)", "健康度：healthy / watch / risk"],
+          ["summary", "text", "岗位盘点摘要"]
+        ]
+      },
+      {
+        name: "succession_candidate",
+        purpose: "继任候选人分层",
+        pages: ["梯队与继任"],
+        fields: [
+          ["role_slug", "varchar(64)", "所属岗位", "FK"],
+          ["employee_slug", "varchar(64)", "候选人", "FK"],
+          ["tier", "varchar(16)", "immediate 可接任 / developing 培养中"],
+          ["gap", "varchar(255)", "缺口描述"],
+          ["state", "varchar(16)", "展示状态标签"]
+        ]
+      },
+      {
+        name: "team_project",
+        purpose: "组队项目",
+        pages: ["项目组队"],
+        fields: [
+          ["slug", "varchar(64)", "项目标识", "UK"],
+          ["title", "varchar(128)", "项目名称"],
+          ["period", "varchar(64)", "项目周期"],
+          ["note", "text", "项目备注"]
+        ]
+      },
+      {
+        name: "team_role",
+        purpose: "项目角色需求与技能要求",
+        pages: ["项目组队"],
+        fields: [
+          ["project_slug", "varchar(64)", "所属项目", "FK"],
+          ["title", "varchar(128)", "角色名称"],
+          ["headcount", "int", "需求人数"],
+          ["allocation", "varchar(32)", "投入比例"],
+          ["skills", "jsonb", "技能要求数组，区分 required 与 bonus"]
+        ]
+      },
+      {
+        name: "team_assignment",
+        purpose: "组队方案落库",
+        pages: ["项目组队"],
+        fields: [
+          ["role_slug", "varchar(64)", "项目角色", "FK"],
+          ["employee_slug", "varchar(64)", "入选员工", "FK"]
+        ]
+      }
+    ]
+  }
+];
+
+/* ============ 渲染 ============ */
+function esc(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function mark(text, keyword) {
+  if (!keyword) return esc(text);
+  const source = String(text);
+  const lower = source.toLowerCase();
+  const target = keyword.toLowerCase();
+  let out = "";
+  let index = 0;
+  while (true) {
+    const found = lower.indexOf(target, index);
+    if (found === -1) { out += esc(source.slice(index)); break; }
+    out += esc(source.slice(index, found));
+    out += "<mark>" + esc(source.slice(found, found + target.length)) + "</mark>";
+    index = found + target.length;
+  }
+  return out;
+}
+
+const state = { keyword: "", open: new Set() };
+
+function fieldCount(table) { return table.fields.length; }
+
+function renderNav() {
+  const nav = document.getElementById("nav");
+  nav.innerHTML = SCHEMA.map((domain, i) => `
+    <a class="nav-item" href="#${domain.id}" data-target="${domain.id}" style="--dot:${domain.color}">
+      <span class="nav-dot"></span>
+      <span>${esc(domain.name)}</span>
+      <span class="nav-count">${domain.tables.length}</span>
+    </a>
+  `).join("");
+}
+
+function renderContent() {
+  const keyword = state.keyword.trim();
+  const lower = keyword.toLowerCase();
+  const content = document.getElementById("content");
+  let visibleTables = 0;
+  let visibleDomains = 0;
+
+  const html = SCHEMA.map((domain, domainIndex) => {
+    const tables = domain.tables.filter(table => {
+      if (!lower) return true;
+      const haystack = [table.name, table.purpose, ...table.fields.flat()].join(" ").toLowerCase();
+      return haystack.includes(lower);
+    });
+    if (!tables.length) return "";
+    visibleDomains += 1;
+    visibleTables += tables.length;
+
+    const cards = tables.map(table => {
+      const open = state.open.has(table.name) || Boolean(lower);
+      const fields = table.fields.map(field => {
+        const [name, type, desc, key] = field;
+        const keyTag = key ? `<span class="key-tag key-${key}">${key}</span>` : "";
+        return `<tr>
+          <td class="f-name">${mark(name, keyword)}${keyTag}</td>
+          <td class="f-type">${mark(type, keyword)}</td>
+          <td>${mark(desc, keyword)}</td>
+        </tr>`;
+      }).join("");
+
+      return `<article class="table-card ${open ? "open" : ""}" data-table="${table.name}">
+        <div class="card-head" data-toggle="${table.name}">
+          <svg class="chevron" viewBox="0 0 24 24"><polyline points="9 6 15 12 9 18"></polyline></svg>
+          <div class="card-title-wrap">
+            <span class="tname">${mark(table.name, keyword)}</span>
+            <div class="card-purpose">${mark(table.purpose, keyword)}</div>
+          </div>
+          <div class="card-meta">
+            <span class="chip">${fieldCount(table)} 字段</span>
+            <span class="chip pages">${esc(table.pages.join(" · "))}</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <table class="fields">
+            <thead><tr><th>字段</th><th>类型</th><th>作用</th></tr></thead>
+            <tbody>${fields}</tbody>
+          </table>
+        </div>
+      </article>`;
+    }).join("");
+
+    return `<section class="domain" id="${domain.id}" style="--dot:${domain.color}">
+      <div class="domain-head">
+        <span class="domain-index">${String(domainIndex + 1).padStart(2, "0")}</span>
+        <h2>${esc(domain.name)}</h2>
+        <span class="en">${esc(domain.en)}</span>
+        <span class="cnt">${tables.length} 张表 · ${tables.reduce((sum, t) => sum + fieldCount(t), 0)} 字段</span>
+      </div>
+      <p class="domain-desc">${esc(domain.desc)}</p>
+      ${cards}
+    </section>`;
+  }).join("");
+
+  content.innerHTML = html || `<div class="empty">没有匹配「${esc(keyword)}」的表或字段，换个关键词试试。</div>`;
+
+  const bar = document.getElementById("resultBar");
+  const text = document.getElementById("resultText");
+  if (lower) {
+    bar.classList.add("show");
+    text.textContent = `筛选「${keyword}」：命中 ${visibleDomains} 个域、${visibleTables} 张表`;
+  } else {
+    bar.classList.remove("show");
+  }
+
+  document.querySelectorAll("[data-toggle]").forEach(head => {
+    head.addEventListener("click", () => {
+      const name = head.getAttribute("data-toggle");
+      const card = head.closest(".table-card");
+      const isOpen = card.classList.toggle("open");
+      if (isOpen) state.open.add(name); else state.open.delete(name);
+    });
+  });
+}
+
+function updateActiveNav() {
+  const sections = Array.from(document.querySelectorAll(".domain"));
+  const items = Array.from(document.querySelectorAll(".nav-item"));
+  if (!sections.length) return;
+  let current = sections[0].id;
+  for (const section of sections) {
+    if (section.getBoundingClientRect().top <= 140) current = section.id;
+  }
+  items.forEach(item => {
+    item.classList.toggle("active", item.getAttribute("data-target") === current);
+  });
+}
+
+function boot() {
+  // 首屏默认展开第一个域，避免打开页面只看到一串标题
+  SCHEMA[0].tables.forEach(table => state.open.add(table.name));
+  renderNav();
+  renderContent();
+  updateActiveNav();
+
+  document.getElementById("fieldTotal").textContent =
+    SCHEMA.reduce((sum, d) => sum + d.tables.reduce((s, t) => s + t.fields.length, 0), 0);
+
+  const search = document.getElementById("search");
+  let timer = null;
+  search.addEventListener("input", event => {
+    clearTimeout(timer);
+    const value = event.target.value;
+    timer = setTimeout(() => {
+      state.keyword = value;
+      renderContent();
+    }, 120);
+  });
+
+  document.getElementById("clearSearch").addEventListener("click", () => {
+    search.value = "";
+    state.keyword = "";
+    renderContent();
+    search.focus();
+  });
+
+  document.getElementById("expandAll").addEventListener("click", () => {
+    SCHEMA.forEach(d => d.tables.forEach(t => state.open.add(t.name)));
+    renderContent();
+  });
+
+  document.getElementById("collapseAll").addEventListener("click", () => {
+    state.open.clear();
+    renderContent();
+  });
+
+  document.addEventListener("keydown", event => {
+    if (event.key === "/" && document.activeElement !== search) {
+      event.preventDefault();
+      search.focus();
+    }
+    if (event.key === "Escape" && document.activeElement === search) {
+      search.value = "";
+      state.keyword = "";
+      renderContent();
+      search.blur();
+    }
+  });
+
+  window.addEventListener("scroll", updateActiveNav, { passive: true });
+}
+
+boot();
+</script>
+</body>
+</html>

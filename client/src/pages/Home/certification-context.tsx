@@ -8,6 +8,7 @@ import {
   type JSX,
   type ReactNode,
 } from 'react';
+import axios from 'axios';
 import { logger } from '@/lib/runtime';
 import { certificationApi } from '@/api';
 import { useUI } from './ui-context';
@@ -133,7 +134,9 @@ export function CertificationProvider({ children }: { children: ReactNode }): JS
       showToast('主动申请已提交，当前状态为“审批中”。');
     } catch (submitError) {
       logger.error('提交主动点亮申请失败', submitError);
-      showToast(ACTION_ERROR_MESSAGE);
+      const serverMessage = axios.isAxiosError(submitError)
+        ? submitError.response?.data?.message ?? submitError.response?.data?.error?.message : null;
+      showToast(typeof serverMessage === 'string' ? serverMessage : ACTION_ERROR_MESSAGE);
       throw submitError;
     }
   }, [refetchApprovals, refetchCertifications, showToast]);

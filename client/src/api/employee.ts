@@ -3,6 +3,7 @@ import type {
   EmployeeProfile,
   EmployeeWorkspaceResponse,
   SkillTreeResponse,
+  SkillRelationsResponse,
 } from '@shared/api.interface';
 import { axiosForBackend } from '@/lib/runtime';
 import { logger } from '@/lib/runtime';
@@ -23,6 +24,11 @@ export async function listEmployees(): Promise<EmployeeListItem[]> {
     logger.error('获取员工列表失败', error);
     throw error;
   }
+}
+
+export async function listColleagues(): Promise<EmployeeListItem[]> {
+  const res=await axiosForBackend.get<EmployeeListItem[]>('/api/employees/colleagues');
+  return res.data;
 }
 
 export async function getEmployeeProfile(slug: string): Promise<EmployeeProfile> {
@@ -49,4 +55,11 @@ export async function getSkillTree(): Promise<SkillTreeResponse> {
     logger.error('获取技能树失败', error);
     throw error;
   }
+}
+
+export async function getSkillRelations(skillSlugs: string[]): Promise<SkillRelationsResponse> {
+  const res = await axiosForBackend.get<SkillRelationsResponse>('/api/skill-relations', {
+    params: { skillSlugs: skillSlugs.join(',') },
+  });
+  return res.data;
 }

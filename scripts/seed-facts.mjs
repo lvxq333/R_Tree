@@ -5,6 +5,16 @@ import { pathToFileURL } from 'node:url';
 
 // Fixed fixtures are repeatable, explicitly fictional, and never infer skill certification.
 const scenarios = {
+  'zhang-wei': { repository:'payment-service-demo', skills:['sys-design-split','sys-design-split','testing','testing','slo-design','sys-design-split'], priorOrg:'研发技术中心 / Java组',
+    commits:[
+      ['订单与支付模块边界设计及契约校验','docs/adr/payment-boundary.md',142,18,{design:'将订单状态机与支付通道适配分离；订单模块只通过 PaymentPort 发起扣款，通道适配层负责重试与幂等。列出创建、确认、取消三条主流程及超时、重复回调两类异常路径。',tradeoff:'比较同步调用和异步事件两种方案；因支付回调可能乱序，采用事件驱动加幂等键，并记录最终一致性窗口和补偿策略。',validation:'完成接口契约评审；16 个契约用例覆盖正常与异常输入，评审发现的 3 处边界歧义已修改设计文档。'}],
+      ['支付回调幂等实现与模块拆分验证','src/payment/CallbackHandler.java',96,31,{implementation:'按订单、支付交易、通道适配三个模块实现接口；回调先校验签名、交易号与幂等键，重复回调返回已有处理结果。',verification:'使用正常回调、重复回调、超时后回调和错误签名进行集成验证；重复回调未产生二次扣款，错误签名被拒绝。',review:'代码评审记录了接口依赖方向和回滚方案，并根据评审意见增加失败事件重放测试。'}],
+      ['支付服务测试方案与边界用例','tests/payment/TestPlan.md',118,12,{testDesign:'根据订单状态机设计正常支付、重复提交、金额边界、无效签名、通道超时与回调乱序用例；逐项标记风险、前置条件、预期状态和验收依据。',automation:'用 JUnit 与 MockServer 实现 28 个自动化用例；隔离通道依赖并使用固定时钟验证超时重试。',analysis:'首轮发现 2 个偶发失败，定位为共享测试数据和异步回调竞态；改为每例独立交易号并等待明确状态后，连续 30 次运行通过。'}],
+      ['支付质量门禁流水线配置及失败复盘','ci/payment-quality-gate.yaml',84,9,{gate:'流水线设置单元测试、契约测试和静态检查三道门禁；测试失败阻止合并，覆盖率低于 80% 要求解释并经评审。',results:'试运行时发现异常退款路径未覆盖，补充 6 个用例；门禁日志保留失败原因、对应提交和复跑结果。',rollback:'门禁误报时保留人工审批例外及 24 小时内复核记录，避免直接关闭全部检查。'}],
+      ['核心支付链路 SLO 定义与告警演练','docs/slo/payment-slo.md',105,13,{serviceLevel:'将支付确认成功率定义为成功确认数/有效支付请求数，排除用户主动取消；目标 99.9%，观察窗口 28 天。',signals:'监控成功率、P95 延迟和超时重试比例；以 5 分钟与 1 小时双窗口燃烧率告警区分突发故障和持续退化。',exercise:'用隔离演示环境注入通道超时，验证告警触发、值班定位和恢复记录；复盘发现重试指标缺少通道标签并已补齐。'}],
+      ['支付回调并发压测与资源调优','reports/payment-callback-load.md',91,15,{baseline:'在隔离压测环境以每秒 300 次回调运行 20 分钟，P95 延迟 240 毫秒，CPU 峰值 78%，堆内存峰值 1.4GB；重复回调占 15%。',diagnosis:'火焰图和线程采样显示同步查询交易状态造成连接池等待；堆分析发现重试上下文保留了完整请求体。',change:'将只读状态查询改为批量缓存并限制重试上下文大小；按交易号分区处理，维持幂等锁作用域。',verification:'相同流量与数据集复测 20 分钟，P95 降至 125 毫秒，CPU 峰值 57%，堆内存峰值 930MB；用 600 次/秒峰值和重复回调回归验证，无重复扣款或状态错乱。'}],
+    ],
+    objectives:[] },
   'zhang-san': { repository:'payment-service', skills:['programming','testing','k8s'], priorOrg:'业务研发部 / 订单组',
     commits:[['拆分订单路由策略并补充泛型接口','src/routing/Strategy.java',68,21],
       ['补充支付异常路径单元测试','tests/PaymentServiceTest.java',124,8],
@@ -38,7 +48,7 @@ export async function seedMockFacts(db) {
     const employees=await tx`SELECT id,slug,org,role FROM employee ORDER BY slug`;
     for(const [slug,scenario] of Object.entries(scenarios)) {
       const person=employees.find(e=>e.slug===slug);
-      if(!person) throw new Error(`模拟数据缺少对应员工：${slug}`);
+      if(!person) continue;
       const insert=async (key,kind,title,date,content) => {
         const rows=await tx`INSERT INTO mvp_mock_fact_source(source_key,employee_id,kind,title,occurrence_label,content)
           VALUES (${key},${person.id},${kind},${'[模拟] '+title},${date},${JSON.stringify({
@@ -46,7 +56,7 @@ export async function seedMockFacts(db) {
           ON CONFLICT(source_key) DO NOTHING RETURNING source_key`;
         inserted+=rows.length;
       };
-      for(const [index,[message,file,added,deleted]] of scenario.commits.entries()) {
+      for(const [index,[message,file,added,deleted,details]] of scenario.commits.entries()) {
         const key=`demo-v1:${slug}:commit:${index+1}`;
         const hash=createHash('sha1').update(key).digest('hex');
         await insert(key,'git_commit',message,`2026-09-${14+index*3}`,{
@@ -54,6 +64,8 @@ export async function seedMockFacts(db) {
           committedAt:`2026-09-${14+index*3}T02:00:00Z`,files:[{path:file,additions:added,deletions:deleted}],
           pullRequest:{number:101+index,state:'merged',reviewStatus:'approved'},
           ci:{status:'passed',checks:['unit-tests','lint']},relatedSkillSlugs:[scenario.skills[index]],
+          scenarioNotice:'开发演示样本，非张伟真实贡献；仅用于验证技能申请和 AI 材料评估流程',
+          ...(details ?? {}),
           sourceRef:`mock://git/${scenario.repository}/commit/${hash}`,
         });
       }

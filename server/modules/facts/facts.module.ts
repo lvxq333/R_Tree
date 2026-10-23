@@ -6,6 +6,8 @@ import { AssessmentController } from './assessment.controller';
 import { DeepSeekService } from './deepseek.service';
 import { CandidateDiscoveryService } from './candidate-discovery.service';
 import { ValidationController } from './validation.controller';
+import { FactCenterAdminController } from './fact-center-admin.controller';
+import { ManagerDashboardController } from './manager-dashboard.controller';
 
-@Module({ controllers: [FactsController,AssessmentController,ValidationController], providers: [FactsService,AssessmentService,DeepSeekService,CandidateDiscoveryService], exports: [FactsService] })
+@Module({ controllers: [FactsController,AssessmentController,ValidationController,FactCenterAdminController,ManagerDashboardController], providers: [FactsService,AssessmentService,DeepSeekService,CandidateDiscoveryService], exports: [FactsService] })
 export class FactsModule {}

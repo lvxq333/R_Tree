@@ -14,7 +14,7 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
   const [job,setJob]=useState<SkillAssessment|null>(null);
   const [selected,setSelected]=useState<string[]>([]);
   const [material,setMaterial]=useState('');
-  const [target,setTarget]=useState(Math.min(5,item.status==='approved'?item.targetLevel+1:item.targetLevel)||1);
+  const [target,setTarget]=useState(Math.min(5,Math.max(item.currentLevel+1,item.targetLevel,1)));
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(true);
   const [creating,setCreating]=useState(false);
@@ -71,6 +71,23 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
   };
   const changed=!!job && (target!==job.targetLevel || material.trim()!==job.selfMaterial ||
     [...selected].sort().join(',')!==[...job.factIds].sort().join(','));
+  if (item.status === 'approved') return <section className="evidence-section" aria-label="子能力与认证标准">
+    <h4>子能力与认证标准</h4>
+    {loading ? <p className="detail-note">正在读取能力标准…</p> : null}
+    {error ? <p role="alert" className="source-explanation">{error}</p> : null}
+    <div className="source-explanation"><b>正式认证：</b>该技能 L{item.currentLevel} 已点亮{item.approvedAt ? `，生效于 ${item.approvedAt}` : ''}。材料评估仅提供申请参考，不改变审批结论。</div>
+    {workspace && <details><summary>查看 L{item.currentLevel} 子能力标准 · {workspace.standard.version}</summary>
+      {workspace.standard.abilities.map(ability => <div className="anchor-section" key={ability.id}><h4>{ability.name}</h4>
+        <p>{ability.anchors[item.currentLevel-1] ?? '该等级暂未配置行为锚点'}</p></div>)}
+    </details>}
+    {job && <details><summary>查看申请前材料评估记录 · {new Date(job.createdAt).toLocaleString('zh-CN')}</summary>
+      {job.simulated && <p className="source-explanation">模拟评估 · 未调用真实大模型，不可用于认证。</p>}
+      <p className="detail-note">当时评估目标为 L{job.targetLevel}，结果仅反映所选材料；正式等级以认证记录为准。</p>
+      {job.result?.abilities.map(ability => <div className="anchor-section" key={ability.abilityId}>
+        <h4>{workspace?.standard.abilities.find(entry => entry.id === ability.abilityId)?.name ?? ability.abilityId}</h4><p>{ability.reason}</p>
+      </div>)}
+    </details>}
+  </section>;
   return <section className="evidence-section" aria-label="子能力与证据评估">
     <h4>子能力与证据评估</h4>
     {loading?<p className="detail-note">正在读取能力标准与事实材料…</p>:null}
@@ -78,16 +95,16 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
     {!workspace&&!loading?<button className="ghost" onClick={()=>void refreshMaterials()}>重新读取材料</button>:null}
     {workspace?<>
       <div className="source-explanation">
-        <b>已具有的子能力：</b>原库暂无逐项认证记录。{item.status==='approved'?`当前已认证技能 L${item.targetLevel}`:`原技能记录当前等级 L${item.currentLevel}`}；以下材料支持等级与正式认证分别记录。
+        <b>当前正式技能等级：</b>{item.currentLevel ? `L${item.currentLevel}` : '未点亮'}。下方评估仅判断所选材料，不授予正式认证。
       </div>
       <div className="self-application-form" style={{gridTemplateColumns:'1fr'}}>
         <label><span>本次评估目标等级</span><select value={target} disabled={busy} onChange={e=>setTarget(Number(e.target.value))}>
-          {LEVELS.map((name,i)=><option key={name} value={i+1}>L{i+1} · {name}</option>)}
+          {LEVELS.map((name,i)=><option key={name} value={i+1} disabled={i+1<=item.currentLevel}>L{i+1} · {name}</option>)}
         </select></label>
       </div>
-      <details><summary>查看子能力标准 · {workspace.standard.version}</summary>
+      <details><summary>查看目标 L{target} 子能力标准 · {workspace.standard.version}</summary>
         {workspace.standard.abilities.map(ability=><div className="anchor-section" key={ability.id}>
-          <h4>{ability.name}</h4>{ability.anchors.map((anchor,i)=><p key={i}><b>L{i+1} {LEVELS[i]}：</b>{anchor}</p>)}
+          <h4>{ability.name}</h4><p><b>L{target} {LEVELS[target-1]}：</b>{ability.anchors[target-1]}</p>
         </div>)}
       </details>
       <h4>本次能力证据</h4>
@@ -96,7 +113,7 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
         {[...workspace.materials].sort((a,b)=>Number(b.recommended)-Number(a.recommended)).map(entry=><div className="evidence-entry" key={entry.id}>
           <input type="checkbox" aria-label={`选择${entry.title}`} checked={selected.includes(entry.id)}
             disabled={busy||(!selected.includes(entry.id)&&selected.length>=12)} onChange={e=>setSelected(ids=>e.target.checked?[...ids,entry.id]:ids.filter(id=>id!==entry.id))}/>
-          <div><b>{entry.title}</b><small>{KINDS[entry.kind]} · V{entry.version}{entry.recommended?' · 相关材料':''}</small>
+          <div><b>{entry.title}</b><small>{KINDS[entry.kind] ?? '材料'} · V{entry.version}{entry.recommended?' · 相关材料':''}{entry.simulated?' · 开发演示样本':''}</small>
             <details><summary>查看材料内容</summary><p style={{overflowWrap:'anywhere'}}>{entry.detail}</p></details>
           </div>
         </div>)}
@@ -112,6 +129,7 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
           {busy?'评估中…':job?.status==='failed'?'重试评估':'评估所选证据'}</button>
       </div>
       {job?<div aria-live="polite">
+        {job.simulated && <p className="source-explanation">模拟评估 · 未调用真实大模型；以下结果仅用于演示流程，不可用于认证。</p>}
         {job.status==='queued'||job.status==='running'?<p className="source-explanation">正在逐项核对证据，完成后自动显示结果。离开页面后任务仍会继续。</p>:null}
         {job.status==='failed'?<p className="source-explanation" role="alert">{job.error}</p>:null}
         {job.stale?<p className="source-explanation" role="status">事实或标准已更新，以下为历史结果。请载入最新材料并重新评估。</p>:null}

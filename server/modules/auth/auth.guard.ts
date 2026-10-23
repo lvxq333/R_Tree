@@ -18,12 +18,20 @@ export class AuthGuard implements CanActivate {
     const token = request.headers.cookie?.split(';').map(part => part.trim()).find(part => part.startsWith(`${SESSION_COOKIE}=`))?.slice(SESSION_COOKIE.length + 1);
     const user = await this.auth.userFromToken(token);
     if (!user) throw new UnauthorizedException('请先登录');
-    const managerOnly = /^\/api\/(team|talent|succession)(\/|$)/.test(path)
-      || (path.startsWith('/api/approvals/') && request.method !== 'GET');
-    if (managerOnly && user.accessRole !== 'manager') throw new ForbiddenException('需要管理者权限');
-    if (user.accessRole !== 'manager' && request.method === 'GET' && path.startsWith('/api/employees/')
-      && path !== '/api/employees/current/workspace'
-      && path !== `/api/employees/${user.employeeSlug.toLowerCase()}`) throw new ForbiddenException('只能访问自己的员工信息');
+    if (/^\/api\/(team|talent|succession)(\/|$)/.test(path) && user.personnelRole !== 'hr')
+      throw new ForbiddenException('需要 HR 权限');
+    if (path.startsWith('/api/fact-center/') && user.personnelRole === 'employee')
+      throw new ForbiddenException('需要 HR 或 T4 专家权限');
+    if (path.startsWith('/api/fact-center/') && request.method !== 'GET' && user.personnelRole !== 'hr')
+      throw new ForbiddenException('只有 HR 可以维护员工和事实');
+    const factEmployeeMatch=path.match(/^\/api\/fact-center\/employees\/([^/]+)\/facts$/);
+    if (factEmployeeMatch && !await this.auth.canViewEmployee(user,factEmployeeMatch[1]))
+      throw new ForbiddenException('无权访问该员工事实');
+    if (path.startsWith('/api/approvals/') && request.method !== 'GET' && user.personnelRole === 'employee')
+      throw new ForbiddenException('需要 HR 或 T4 专家权限');
+    const employeeMatch=path.match(/^\/api\/employees\/([^/]+)$/);
+    if (employeeMatch && employeeMatch[1] !== 'colleagues' && request.method === 'GET' && !await this.auth.canViewEmployee(user,employeeMatch[1]))
+      throw new ForbiddenException('无权访问该员工');
     (request as Request & { authUser?: typeof user }).authUser = user;
     return true;
   }

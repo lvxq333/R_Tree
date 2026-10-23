@@ -21,14 +21,30 @@ export class AuthService {
   private readonly attempts = new Map<string, { count: number; until: number }>();
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase) {}
 
+  async canViewEmployee(user: AuthUser, employeeSlug: string): Promise<boolean> {
+    if (user.personnelRole === 'hr' || user.employeeSlug === employeeSlug) return true;
+    if (user.personnelRole !== 'expert') return false;
+    const [row] = await this.db.execute<{allowed:boolean}>(sql`SELECT EXISTS(
+      SELECT 1 FROM employee e WHERE e.slug=${employeeSlug}
+        AND (e.department=${user.department} OR EXISTS(
+          SELECT 1 FROM mvp_org_relation r WHERE r.employee_slug=e.slug AND r.target_slug=${user.employeeSlug}
+            AND r.relation_type IN ('expert','panel') AND r.effective_to IS NULL))) AS allowed`);
+    return Boolean(row?.allowed);
+  }
+
   async userFromToken(token: string | undefined): Promise<AuthUser | null> {
     if (!token || token.length > 256) return null;
-    const [row] = await this.db.execute<{ id: string; employee_id: string; username: string; name: string; slug: string; org: string | null; role: string | null; access_role: AuthUser['accessRole']; feishu_linked: boolean }>(sql`
-      SELECT a.id, a.employee_id, a.username, e.name, e.slug, e.org, e.role, a.access_role,
+    const [row] = await this.db.execute<{ id: string; employee_id: string; username: string; name: string; slug: string; org: string | null; role: string | null; department:string|null; job_grade:AuthUser['jobGrade']; personnel_role:'employee'|'hr'; feishu_linked: boolean }>(sql`
+      SELECT a.id, a.employee_id, a.username, e.name, e.slug, e.org, e.role,e.department,e.job_grade,e.personnel_role,
         EXISTS(SELECT 1 FROM app_external_identity x WHERE x.account_id=a.id AND x.provider='feishu') AS feishu_linked
       FROM app_session s JOIN app_account a ON a.id=s.account_id JOIN employee e ON e.id=a.employee_id
       WHERE s.token_hash=${hashToken(token)} AND s.expires_at>now() AND a.enabled=true`);
-    return row ? { accountId: row.id, employeeId: row.employee_id, username: row.username, name: row.name, feishuLinked: row.feishu_linked, employeeSlug: row.slug, accessRole: row.access_role, org: row.org ?? '', position: row.role ?? '' } : null;
+    if (!row) return null;
+    const personnelRole = row.personnel_role === 'hr' ? 'hr' : row.job_grade === 'T4' ? 'expert' : 'employee';
+    return { accountId: row.id, employeeId: row.employee_id, username: row.username, name: row.name,
+      feishuLinked: row.feishu_linked, employeeSlug: row.slug, accessRole: personnelRole === 'employee' ? 'employee' : 'manager',
+      org: row.org ?? '', position: row.role ?? '', department: row.department ?? row.org ?? '',
+      jobGrade: row.job_grade, personnelRole };
   }
 
   async register(input: RegisterInput): Promise<string> {

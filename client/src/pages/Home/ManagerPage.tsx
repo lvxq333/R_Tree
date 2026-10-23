@@ -1,24 +1,92 @@
+import { useCallback, useEffect, useState } from 'react';
+import type { ManagerDashboardResponse } from '@shared/api.interface';
+import { getManagerDashboard } from '@/api/fact-center';
+import { useAuth } from './auth-context';
 import { useUI } from './ui-context';
 
-const ManagerPage = () => {
-  const { navigate, openProfile } = useUI();
+const GRADES = ['T1','T2','T3','T4'];
+function downloadSummary(data:ManagerDashboardResponse) {
+  const rows = [['员工','岗位','职级','发展目标','P0 Gap','行动完成率','已登记 Check-in'],
+    ...data.members.map(row=>[row.name,row.role,row.grade??'',row.target,row.p0Gaps,
+      row.progress===null?'未制定计划':`${row.progress}%`,row.nextCheckin??''])];
+  const content='\uFEFF'+rows.map(row=>row.map(value=>`"${String(value).replaceAll('"','""')}"`).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([content],{type:'text/csv;charset=utf-8'}));
+  const link=document.createElement('a');link.href=url;link.download=`团队盘点-${new Date().toISOString().slice(0,10)}.csv`;
+  link.click();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 
-  return (
-    <section className="page active" id="manager">
-      <div className="manager-hero"><div><h2>平台工程部 · 人才驾驶舱</h2><p>62 名员工 · 2026 Q3 · 数据有效率 91%</p></div><div className="filters"><button>全部岗位 ⌄</button><button>全部职级 ⌄</button><button>本季度 ⌄</button></div></div>
-      <div className="signal-strip manager-signals"><article><span>关键技能满足率</span><strong>76%</strong><small className="up">↑ 4% 较上季度</small></article><article><span>关键岗位健康度</span><strong>8 / 12</strong><small>4 个岗位需要行动</small></article><article><span>P0 技能缺口</span><strong className="danger">17</strong><small>集中在 3 个技能域</small></article><article><span>路线执行率</span><strong>68%</strong><small>9 人本周无进展</small></article></div>
-      <div className="manager-grid">
-        <section className="panel heat-panel"><div className="section-head"><div><h3>核心技能供需</h3><p>需求等级与当前供给的差值</p></div><button className="ghost">查看完整热力图</button></div><div className="heat-table"><div></div><b>T1</b><b>T2</b><b>T3</b><b>T4</b><span>容器与编排</span><i className="h1">+8</i><i className="h2">+3</i><i className="h4">-4</i><i className="h5">-2</i><span>自动化开发</span><i className="h1">+5</i><i className="h3">+1</i><i className="h4">-6</i><i className="h5">-3</i><span>架构设计</span><i className="h2">+2</i><i className="h3">0</i><i className="h4">-3</i><i className="h5">-1</i><span>可观测性</span><i className="h1">+6</i><i className="h2">+3</i><i className="h3">0</i><i className="h4">-1</i></div><div className="legend"><span><i className="supply"></i>供给充足</span><span><i className="balanced"></i>基本平衡</span><span><i className="shortage"></i>存在缺口</span></div></section>
-        <section className="panel risk-panel"><div className="section-head"><div><h3>需要管理动作</h3><p>按业务影响排序</p></div><span>4 项</span></div><div className="risk-item critical"><span>高</span><div><b>T4 平台架构师无成熟继任者</b><p>最近候选人匹配度 78%，仍缺架构治理能力。</p><button>查看梯队 →</button></div></div><div className="risk-item warning"><span>中</span><div><b>自动化开发 P0 Gap 集中</b><p>12 名 T2 员工中 7 人低于基线。</p><button>创建培养计划 →</button></div></div><div className="risk-item"><span>低</span><div><b>3 项技能数据即将过期</b><p>涉及 6 名员工，建议安排复核。</p><button>查看名单 →</button></div></div></section>
-      </div>
-      <section className="panel member-panel"><div className="section-head"><div><h3>团队成长状态</h3><p>聚焦目标与行动，不以单一分数评价员工</p></div><button className="primary" onClick={() => navigate('talent')}>寻找项目人才</button></div>
-        <div className="member-row header"><span>成员</span><span>发展目标</span><span>P0 Gap</span><span>路线进度</span><span>下次 Check-in</span><span></span></div>
-        <button className="member-row member-profile-row" onClick={() => openProfile('zhou-chen')}><span><i className="mini-avatar">周</i><b>周晨</b></span><span>T3 平台架构师</span><span><b className="danger">2 项</b></span><span><em><i style={{ width: '68%' }}></i></em>68%</span><span>09-22</span><span aria-hidden="true">→</span></button>
-        <button className="member-row member-profile-row" onClick={() => openProfile('lin-xiao')}><span><i className="mini-avatar blue">林</i><b>林晓</b></span><span>T3 SRE 专家</span><span><b>1 项</b></span><span><em><i style={{ width: '82%' }}></i></em>82%</span><span>09-25</span><span aria-hidden="true">→</span></button>
-        <button className="member-row member-profile-row" onClick={() => openProfile('chen-ran')}><span><i className="mini-avatar green">陈</i><b>陈然</b></span><span>待确认</span><span><b>—</b></span><span><em><i style={{ width: '24%' }}></i></em>24%</span><span className="danger">已逾期</span><span aria-hidden="true">→</span></button>
+export default function ManagerPage() {
+  const { navigate,openProfile }=useUI();
+  const {user}=useAuth();
+  const [role,setRole]=useState('');
+  const [grade,setGrade]=useState('');
+  const [data,setData]=useState<ManagerDashboardResponse|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [showAllSkills,setShowAllSkills]=useState(false);
+  const [visibleMembers,setVisibleMembers]=useState(10);
+  const load=useCallback(async()=>{
+    setLoading(true);setError('');
+    try {setData(await getManagerDashboard({role,grade}));}
+    catch {setError('团队数据读取失败，请重试。');}
+    finally {setLoading(false);}
+  },[role,grade]);
+  useEffect(()=>{setVisibleMembers(10);void load();},[load]);
+  useEffect(()=>{const handler=()=>{if(data)downloadSummary(data);};window.addEventListener('manager:export',handler);
+    return ()=>window.removeEventListener('manager:export',handler);},[data]);
+  const scope=data?.scope;
+  const rate=scope?.requirementCount ? `${Math.round(scope.metCount/scope.requirementCount*100)}%` : '—';
+  const progress=scope?.actionCount ? `${Math.round(scope.completedActionCount/scope.actionCount*100)}%` : '—';
+  const heat=showAllSkills?data?.heat??[]:(data?.heat??[]).slice(0,5);
+  const openEmployee=(slug:string)=>{
+    if(user.personnelRole==='hr')openProfile(slug);
+    else {sessionStorage.setItem('fact-center:selected-employee',slug);navigate('factCenter');}
+  };
+  return <section className="page active" id="manager" aria-busy={loading}>
+    <div className="manager-hero"><div><h2>{user.personnelRole==='hr'?'人才驾驶舱':'团队技能地图'}</h2>
+      <p>{loading?'正在读取…':`${scope?.employeeCount??0} 名可查看员工 · ${scope?.standardEmployeeCount??0} 人已配置适用标准`} · 按当前有效数据计算</p></div>
+      <div className="filters manager-filters">
+        <label>岗位<select aria-label="筛选岗位" value={role} onChange={event=>setRole(event.target.value)}><option value="">全部岗位</option>
+          {data?.filters.roles.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+        <label>职级<select aria-label="筛选职级" value={grade} onChange={event=>setGrade(event.target.value)}><option value="">全部职级</option>
+          {GRADES.map(value=><option key={value}>{value}</option>)}</select></label>
+        <button type="button" onClick={()=>void load()} disabled={loading}>刷新数据</button>
+      </div></div>
+    {error && <div className="source-explanation" role="alert">{error} <button onClick={()=>void load()}>重试</button></div>}
+    <div className="signal-strip manager-signals">
+      <article><span>关键技能满足率</span><strong>{loading?'…':rate}</strong><small>{scope?.requirementCount??0} 项岗位技能要求中满足 {scope?.metCount??0} 项</small></article>
+      <article><span>已配置职级标准</span><strong>{loading?'…':`${scope?.standardEmployeeCount??0} / ${scope?.employeeCount??0}`}</strong><small>未配置者不计入满足率</small></article>
+      <article><span>P0 技能缺口</span><strong className="danger">{loading?'…':scope?.p0GapCount??0}</strong><small>目标等级高于有效认证至少 3 级</small></article>
+      <article><span>发展行动完成率</span><strong>{loading?'…':progress}</strong><small>{scope?.planCount??0} 人有正式计划 · {scope?.completedActionCount??0}/{scope?.actionCount??0} 项完成</small></article>
+    </div>
+    <div className="manager-grid">
+      <section className="panel heat-panel"><div className="section-head"><div><h3>核心技能供需</h3><p>单元格为满足人数－要求人数；仅统计有适用职级标准的员工</p></div>
+        <button className="ghost" onClick={()=>setShowAllSkills(value=>!value)} disabled={!data?.heat.length}>{showAllSkills?'收起技能':'查看完整热力图'}</button></div>
+        <div className="heat-table"><span>技能</span>{GRADES.map(value=><b key={value}>{value}</b>)}
+          {heat.map(row=><div className="manager-heat-row" key={row.skillSlug}><span>{row.name}</span>{row.grades.map(cell=><i key={cell.grade}
+            className={cell.demand===0?'h3':cell.met===cell.demand?'h1':cell.met===0?'h5':'h4'}
+            title={`${cell.grade}：${cell.met} 人满足 / ${cell.demand} 人有要求`}>{cell.demand?`${cell.met-cell.demand}`:'—'}</i>)}</div>)}</div>
+        {!loading && !heat.length && <p className="fc-empty">当前筛选下没有可计算的岗位技能要求</p>}
+        <div className="legend"><span><i className="supply" />全部满足</span><span><i className="balanced" />部分满足</span><span><i className="shortage" />存在缺口</span></div>
       </section>
+      <section className="panel risk-panel"><div className="section-head"><div><h3>需要管理动作</h3><p>根据技能差距与复核日期生成</p></div><span>{data?.risks.length??0} 项</span></div>
+        {data?.risks.map((risk,index)=><div className={`risk-item ${risk.severity==='high'?'critical':'warning'}`} key={`${risk.kind}-${index}`}>
+          <span>{risk.severity==='high'?'高':'中'}</span><div><b>{risk.title}</b><p>{risk.detail}</p>
+            <button onClick={()=>{if(risk.employeeSlug)sessionStorage.setItem('fact-center:selected-employee',risk.employeeSlug);navigate('factCenter');}}>查看相关员工 →</button></div></div>)}
+        {!loading && !data?.risks.length && <p className="fc-empty">当前筛选范围内没有识别出需处理的事项</p>}
+      </section>
+    </div>
+    <section className="panel member-panel"><div className="section-head"><div><h3>团队成长状态</h3><p>按当前权限列出员工；点击成员查看详情</p></div>
+      <button className="primary" onClick={()=>navigate('factCenter')}>查看员工宽表</button></div>
+      <div className="member-row header"><span>成员</span><span>发展目标</span><span>P0 Gap</span><span>行动完成率</span><span>已登记 Check-in</span><span /></div>
+      {data?.members.slice(0,visibleMembers).map(member=><button type="button" className="member-row member-profile-row" key={member.employeeSlug}
+        onClick={()=>openEmployee(member.employeeSlug)}><span><i className="mini-avatar">{member.name.slice(0,1)}</i><b>{member.name}</b><small>{member.grade??'未定级'} · {member.role}</small></span>
+        <span>{member.target}</span><span><b className={member.p0Gaps?'danger':''}>{member.p0Gaps} 项</b></span>
+        <span>{member.progress===null?'—':<><em><i style={{width:`${member.progress}%`}} /></em>{member.progress}%</>}</span>
+        <span>{member.nextCheckin||'未安排'}</span><span aria-hidden="true">→</span></button>)}
+      {!loading && !data?.members.length && <p className="fc-empty">当前筛选下没有员工</p>}
+      {(data?.members.length??0)>visibleMembers && <button type="button" className="ghost manager-more" onClick={()=>setVisibleMembers(count=>count+10)}>
+        显示更多成员（已显示 {visibleMembers} / {data?.members.length}）</button>}
     </section>
-  );
-};
-
-export default ManagerPage;
+  </section>;
+}

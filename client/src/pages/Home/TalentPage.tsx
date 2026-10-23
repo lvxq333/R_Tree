@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type {
+  EmployeeWideRow,
   ShortlistResponse,
   TalentCandidate,
   TalentCandidatesResponse,
@@ -7,6 +8,8 @@ import type {
 import { talentApi } from '@/api';
 import { logger } from '@/lib/runtime';
 import { useUI } from './ui-context';
+import { useAuth } from './auth-context';
+import { listWideEmployees } from '@/api/fact-center';
 import TalentConditions from './TalentConditions';
 import TalentCandidateList from './TalentCandidateList';
 import ShortlistPanel from './ShortlistPanel';
@@ -26,7 +29,7 @@ const DEFAULT_PROMPT: string =
   '我需要找适合参与具身智能业务的人。项目预计 10 月启动，需要理解机器人感知、强化学习或运动控制，有真实机器人项目经验更好，可投入至少 50%。';
 const DEFAULT_SCOPE_LABEL: string = '全公司人才技能池';
 
-function TalentPage() {
+function HrTalentPage() {
   const { navigate, showToast } = useUI();
   const [prompt, setPrompt] = useState<string>(DEFAULT_PROMPT);
   const [analyzePhase, setAnalyzePhase] = useState<AnalyzePhase>('idle');
@@ -374,4 +377,47 @@ function TalentPage() {
   );
 }
 
-export default TalentPage;
+function ExpertTalentSearch() {
+  const [people, setPeople] = useState<EmployeeWideRow[]>([]);
+  const [query, setQuery] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    listWideEmployees().then(rows => {
+      if (active) setPeople(rows);
+    }).catch(cause => {
+      logger.error('加载专家人才搜索失败', cause);
+      if (active) setError(true);
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  const filtered = people.filter(person =>
+    `${person.name} ${person.role ?? ''} ${person.department ?? ''} ${person.jobGrade ?? ''} ${person.factTitles.join(' ')}`
+      .toLowerCase().includes(query.trim().toLowerCase()));
+
+  return <section className="page active expert-talent-page" id="talent">
+    <div className="panel expert-talent-panel">
+      <div className="section-head"><div><h2>人才搜索</h2><p>仅展示本部门和指派给你复核的员工，按姓名、岗位、职级或事实标题查找。</p></div><strong>{filtered.length} 人</strong></div>
+      <label className="expert-talent-search">搜索人才<input id="expert-talent-search" value={query} onChange={event => setQuery(event.target.value)} placeholder="输入姓名、岗位、职级或项目关键词" /></label>
+      {loading && <p>正在读取人才资料…</p>}
+      {error && <p role="alert">读取失败，请刷新页面重试。</p>}
+      {!loading && !error && <div className="expert-talent-grid">{filtered.map(person => <article key={person.employeeSlug}>
+        <div><strong>{person.name}</strong><span>{person.jobGrade || '未定级'}</span></div>
+        <p>{person.department || person.org || '未填写部门'} · {person.role || '未填写岗位'}</p>
+        <small>项目 {person.projectCount} · 证据 {person.evidenceCount} · 有效事实 {person.factCount}</small>
+        {person.factTitles.length > 0 && <p className="expert-talent-fact">{person.factTitles.slice(0, 2).join(' · ')}</p>}
+      </article>)}</div>}
+      {!loading && !error && filtered.length === 0 && <p>没有匹配的人才。</p>}
+    </div>
+  </section>;
+}
+
+export default function TalentPage() {
+  const { user } = useAuth();
+  return user.personnelRole === 'expert' ? <ExpertTalentSearch /> : <HrTalentPage />;
+}

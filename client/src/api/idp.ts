@@ -1,16 +1,11 @@
-import type { IdpResponse } from '@shared/api.interface';
+import type { IdpResponse, IdpOptions, IdpGenerateRequest, IdpActionUpdate, IdpAlignmentRequest, IdpRevision, IdpLiveReview } from '@shared/api.interface';
 import { axiosForBackend } from '@/lib/runtime';
-import { logger } from '@/lib/runtime';
-
-export async function getIdp(): Promise<IdpResponse> {
-  try {
-    const res = await axiosForBackend.request<IdpResponse>({
-      url: '/api/idp',
-      method: 'GET',
-    });
-    return res.data;
-  } catch (error) {
-    logger.error('获取个人发展计划失败', error);
-    throw error;
-  }
-}
+export const getIdp = async (): Promise<IdpResponse> => (await axiosForBackend.get('/api/idp')).data;
+export const getOptions = async (): Promise<IdpOptions> => (await axiosForBackend.get('/api/idp/options')).data;
+export const generate = async (data: IdpGenerateRequest): Promise<IdpResponse> => (await axiosForBackend.post('/api/idp/draft',data)).data;
+export const confirm = async (draftId: string): Promise<IdpResponse> => (await axiosForBackend.post('/api/idp/confirm',{draftId})).data;
+export const updateAction = async (id: string,data: IdpActionUpdate): Promise<IdpResponse> => (await axiosForBackend.patch(`/api/idp/actions/${encodeURIComponent(id)}`,data)).data;
+export const align = async (data: IdpAlignmentRequest): Promise<IdpResponse> => (await axiosForBackend.post('/api/idp/alignments',data)).data;
+export const history = async (): Promise<IdpRevision[]> => (await axiosForBackend.get('/api/idp/history')).data;
+export const version = async (revision: number): Promise<IdpResponse> => (await axiosForBackend.get(`/api/idp/history/${revision}`)).data;
+export const review = async (): Promise<IdpLiveReview> => (await axiosForBackend.get('/api/idp/review')).data;

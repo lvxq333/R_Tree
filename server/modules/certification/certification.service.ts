@@ -10,7 +10,9 @@ import {
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
 import { and, asc, eq, sql } from 'drizzle-orm';
-import { approval, employeeSkill } from '@server/database/schema';
+import { approval, employeeSkill, skill, skillCategory } from '@server/database/schema';
+import { employee } from '@server/database/schema';
+import { mvpEmployeeSkill } from '@server/database/mvp-schema';
 import type {
   ApprovalItem,
   CertificationDecision,
@@ -67,14 +69,17 @@ export function normalizeEvidence(raw: unknown): CertificationEvidence[] {
 
 export function toCertificationItem(
   row: typeof employeeSkill.$inferSelect,
+  resolvedSkillSlug?: string | null,
+  resolvedCategory?: string | null,
 ): CertificationItem {
   return {
     id: row.slug,
+    skillSlug: row.skillSlug ?? resolvedSkillSlug ?? null,
     source: row.source ?? '',
     sourceShort: row.sourceShort ?? '',
     sourceLabel: row.sourceLabel ?? '',
     title: row.title,
-    category: row.category ?? '',
+    category: resolvedCategory ?? row.category ?? '',
     currentLevel: row.currentLevel ?? 0,
     targetLevel: row.targetLevel ?? 0,
     confidence: row.confidence ?? 0,
@@ -84,6 +89,7 @@ export function toCertificationItem(
     anchor: row.anchor ?? '',
     evidence: normalizeEvidence(row.evidence),
     deadline: row.deadline ?? '',
+    approvedAt: row.approvedAt ?? null,
   };
 }
 
@@ -137,15 +143,89 @@ export class CertificationService {
   ) {}
 
   async listCertifications(): Promise<CertificationItem[]> {
-    const rows = await this.db
+    const employeeSlug = currentEmployee().employeeSlug;
+    const [rows, catalog, categories, activeSkills, [person]] = await Promise.all([this.db
       .select()
       .from(employeeSkill)
-      .where(and(eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug),sql`${employeeSkill.status} IS DISTINCT FROM 'withdrawn'`))
-      .orderBy(asc(employeeSkill.sort));
-    return rows.map((row: typeof employeeSkill.$inferSelect) => toCertificationItem(row));
+      .where(and(eq(employeeSkill.employeeSlug, employeeSlug),sql`${employeeSkill.status} IS DISTINCT FROM 'withdrawn'`))
+      .orderBy(asc(employeeSkill.sort)), this.db.select({slug:skill.slug,name:skill.name,categorySlug:skill.categorySlug}).from(skill),
+      this.db.select({slug:skillCategory.slug,name:skillCategory.name,parentSlug:skillCategory.parentSlug}).from(skillCategory),
+      this.db.select().from(mvpEmployeeSkill).where(eq(mvpEmployeeSkill.employeeSlug, employeeSlug)),
+      this.db.select({hireDate:employee.hireDate}).from(employee).where(eq(employee.slug, employeeSlug)).limit(1)]);
+    const byName = new Map(catalog.map(entry => [entry.name, entry.slug]));
+    const bySlug = new Map(catalog.map(entry => [entry.slug, entry]));
+    const categoryBySlug = new Map(categories.map(entry => [entry.slug, entry]));
+    const categoryPath = (skillSlug: string) => {
+      const category = categoryBySlug.get(bySlug.get(skillSlug)?.categorySlug ?? '');
+      const parent = categoryBySlug.get(category?.parentSlug ?? '');
+      return category ? [parent?.name, category.name].filter(Boolean).join(' / ') : '';
+    };
+    const activeBySkill = new Map<string, typeof mvpEmployeeSkill.$inferSelect>();
+    const knownSkills = new Set(activeSkills.map(row => row.skillSlug));
+    for (const row of activeSkills) {
+      if (row.status !== 'active') continue;
+      const certifiedDate = new Date(row.certifiedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+      if (person?.hireDate && certifiedDate < person.hireDate) continue;
+      const previous = activeBySkill.get(row.skillSlug);
+      if (!previous || row.level > previous.level ||
+        (row.level === previous.level && new Date(row.certifiedAt) > new Date(previous.certifiedAt))) {
+        activeBySkill.set(row.skillSlug, row);
+      }
+    }
+    const matters = rows.map((row: typeof employeeSkill.$inferSelect) => {
+      const resolvedSlug = row.skillSlug ?? byName.get(row.title);
+      return toCertificationItem(row, resolvedSlug, resolvedSlug ? categoryPath(resolvedSlug) : null);
+    });
+    const effectiveMatters = new Set<string>();
+    const seenApproved = new Set<string>();
+    const visibleMatters = matters.filter(item => {
+      if (item.status !== 'approved' || !item.skillSlug) return true;
+      if (seenApproved.has(item.skillSlug)) return false;
+      const active = activeBySkill.get(item.skillSlug);
+      if (!active) {
+        if (knownSkills.has(item.skillSlug)) return false;
+        seenApproved.add(item.skillSlug);
+        return true;
+      }
+      if (item.targetLevel !== active.level) return false;
+      effectiveMatters.add(item.skillSlug);
+      seenApproved.add(item.skillSlug);
+      return true;
+    });
+    const historical: CertificationItem[] = [...activeBySkill.values()]
+      .filter(row => !effectiveMatters.has(row.skillSlug) && bySlug.has(row.skillSlug))
+      .map(row => {
+        const certifiedDate = new Date(row.certifiedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' });
+        return {
+          id: `history-${row.slug}`,
+          skillSlug: row.skillSlug,
+          historical: true,
+          source: 'history',
+          sourceShort: '历',
+          sourceLabel: '历史技能认证',
+          title: bySlug.get(row.skillSlug)!.name,
+          category: categoryPath(row.skillSlug),
+          currentLevel: row.level,
+          targetLevel: row.level,
+          confidence: 0,
+          status: 'approved',
+          statusLabel: '已点亮',
+          explanation: `该技能自 ${certifiedDate} 起正式点亮，当前有效等级为 L${row.level}。`,
+          anchor: '',
+          evidence: [],
+          deadline: '',
+          approvedAt: certifiedDate,
+        };
+      });
+    return [...visibleMatters, ...historical];
   }
 
   async getCertification(slug: string): Promise<CertificationItem> {
+    if (slug.startsWith('history-')) {
+      const item = (await this.listCertifications()).find(entry => entry.id === slug);
+      if (!item) throw new NotFoundException(`认证记录不存在：${slug}`);
+      return item;
+    }
     const rows = await this.db
       .select()
       .from(employeeSkill)
@@ -153,18 +233,31 @@ export class CertificationService {
       .limit(1);
     const row = rows[0];
     if (!row) throw new NotFoundException(`认证记录不存在：${slug}`);
-    return toCertificationItem(row);
+    const [catalog] = row.skillSlug ? [] : await this.db.select({slug:skill.slug}).from(skill).where(eq(skill.name,row.title)).limit(1);
+    return toCertificationItem(row,catalog?.slug);
   }
 
   /** 员工主动申请：新建认证（审批中）+ 新建关联审批单 */
   async submitSelfApplication(
     input: SelfApplicationInput,
   ): Promise<CertificationMutationResult> {
-    if (!input.skill) throw new BadRequestException('skill 不能为空');
-    if (typeof input.level !== 'number' || input.level < 1) {
-      throw new BadRequestException('level 必须为正整数');
+    if (!input.skillSlug) throw new BadRequestException('请选择技能');
+    if (!Number.isInteger(input.level) || input.level < 1 || input.level > 5) {
+      throw new BadRequestException('level 必须为 L1 至 L5');
     }
-    const currentLevel: number = await this.resolveCurrentLevel(input.skill);
+    const [chosen] = await this.db.select().from(skill).where(eq(skill.slug, input.skillSlug)).limit(1);
+    if (!chosen) throw new BadRequestException('技能不在当前技能库中');
+    const [category] = chosen.categorySlug
+      ? await this.db.select().from(skillCategory).where(eq(skillCategory.slug, chosen.categorySlug)).limit(1) : [];
+    const [parent] = category?.parentSlug
+      ? await this.db.select().from(skillCategory).where(eq(skillCategory.slug, category.parentSlug)).limit(1) : [];
+    const currentLevel: number = await this.resolveCurrentLevel(chosen.slug);
+    if (input.level <= currentLevel) throw new BadRequestException(`该技能当前已达到 L${currentLevel}，请选择更高等级`);
+    const [openApplication] = await this.db.execute<{slug:string}>(sql`SELECT slug FROM employee_skill
+      WHERE employee_slug=${currentEmployee().employeeSlug} AND
+        (skill_slug=${chosen.slug} OR (skill_slug IS NULL AND title=${chosen.name}))
+        AND status IN ('pending','ready','returned') LIMIT 1`);
+    if (openApplication) throw new BadRequestException('该技能已有待处理申请，请先查看或完成现有事项');
     const slug = `self-${randomUUID()}`;
     const baseExplanation =
       '你已主动提交点亮申请。系统只校验证明是否完整，最终等级由管理者或 HR 依据行为锚点确认。';
@@ -182,8 +275,9 @@ export class CertificationService {
       .values({
         slug,
         employeeSlug: currentEmployee().employeeSlug,
-        title: input.skill,
-        category: '专业技能 / 员工选择',
+        skillSlug: chosen.slug,
+        title: chosen.name,
+        category: category ? [parent?.name, category.name].filter(Boolean).join(' / ') : '技能',
         source: 'manual',
         sourceShort: '自证',
         sourceLabel: '员工主动申请',
@@ -284,21 +378,14 @@ export class CertificationService {
   }
 
   /** 取该员工同名技能的当前最高等级，无记录则为 0 */
-  private async resolveCurrentLevel(skillTitle: string): Promise<number> {
-    const rows = await this.db
-      .select({ currentLevel: employeeSkill.currentLevel })
-      .from(employeeSkill)
-      .where(
-        and(
-          eq(employeeSkill.employeeSlug, currentEmployee().employeeSlug),
-          eq(employeeSkill.title, skillTitle),
-        ),
-      );
-    return rows.reduce(
-      (max: number, row: { currentLevel: number | null }) =>
-        Math.max(max, row.currentLevel ?? 0),
-      0,
-    );
+  private async resolveCurrentLevel(skillSlug: string): Promise<number> {
+    const [row] = await this.db.execute<{level:number}>(sql`SELECT GREATEST(
+      COALESCE((SELECT max(level) FROM mvp_employee_skill WHERE employee_slug=${currentEmployee().employeeSlug}
+        AND skill_slug=${skillSlug} AND status='active'),0),
+      COALESCE((SELECT max(current_level) FROM employee_skill WHERE employee_slug=${currentEmployee().employeeSlug}
+        AND status='approved' AND (skill_slug=${skillSlug} OR (skill_slug IS NULL AND title=(SELECT name FROM skill WHERE slug=${skillSlug})))),0)
+    )::int AS level`);
+    return row?.level ?? 0;
   }
 
   private async nextCertificationSort(): Promise<number> {

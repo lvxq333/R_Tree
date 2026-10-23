@@ -76,7 +76,7 @@ const CertificationDetail = ({ item }: CertificationDetailProps) => {
           <div><dt>拟调整等级</dt><dd>L{item.targetLevel}</dd></div>
           <div><dt>复核截止</dt><dd>{item.deadline}</dd></div>
         </dl>
-      ) : item.source==='ai_validation' ? <p>隔离验证候选建议，不提供正式认证分数。</p> : (
+      ) : item.status === 'approved' ? null : item.source==='ai_validation' ? <p>隔离验证候选建议，不提供正式认证分数。</p> : (
         <div className="confidence-row">
           <span>依据完整度</span>
           <i><span style={{ width: `${item.confidence}%` }} /></i>
@@ -84,7 +84,8 @@ const CertificationDetail = ({ item }: CertificationDetailProps) => {
         </div>
       )}
       <section className="evidence-section">
-        <h4>{isReview ? '触发依据与最近记录' : '本次申请依据'}</h4>
+        <h4>{item.historical ? '历史认证记录' : isReview ? '触发依据与最近记录' : item.status === 'approved' ? '已批准申请依据' : '本次申请依据'}</h4>
+        {item.historical && <p>对象表记录了正式生效的技能等级；这条历史认证未关联原申请材料。</p>}
         {item.evidence.map((entry: CertificationEvidence) => (
           <div key={`${entry.type}-${entry.title}`} className="evidence-entry">
             <span>{entry.type}</span>
@@ -92,11 +93,11 @@ const CertificationDetail = ({ item }: CertificationDetailProps) => {
           </div>
         ))}
       </section>
-      <section className="anchor-section">
+      {isReview || !item.skillSlug ? <section className="anchor-section">
         <h4>{isReview ? `当前 L${item.currentLevel} 行为锚点` : `L${item.targetLevel} 行为锚点`}</h4>
         <p>{item.anchor}</p>
-      </section>
-      {!isReview && ['编程语言基础','自动化测试与质量门禁','容器与编排（K8s）','容器与编排','跨团队协作'].includes(item.title)
+      </section> : null}
+      {!isReview && item.skillSlug && !item.historical
         ? <SkillAssessmentPanel key={item.id} item={item}/> : null}
       <div className="detail-actions">{actions}</div>
     </aside>

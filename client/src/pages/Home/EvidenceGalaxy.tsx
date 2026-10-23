@@ -1,402 +1,313 @@
-import { useEmployeeWorkspace } from './employee-workspace-context';
-import { useAuth } from './auth-context';
+import { employeeApi } from '@/api';
+import type { SkillRelationEdge } from '@shared/api.interface';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { CertificationItem } from './certification-context';
 
-interface GalaxyNodeDef {
-  id: string;
-  x: number;
-  y: number;
-  tracks: string;
-  shape: 'halo' | 'ring' | 'orbit';
-  halo: number;
-  core: number;
-  textY: number;
-  levelY: number;
-  label: string;
-  ariaLabel: string;
-}
-
-interface GalaxyLineDef {
-  from: string;
-  to: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  track: string;
-}
-
-interface GalaxySkillView {
-  title: string;
-  category: string;
-  currentLevel: number;
-  targetLevel: number;
-  status: string;
-  explanation: string;
-}
-
-const GALAXY_NODES: GalaxyNodeDef[] = [
-  { id: 'programming', x: 130, y: 120, tracks: 'software', shape: 'halo', halo: 28, core: 10, textY: 36, levelY: 52, label: '编程语言基础', ariaLabel: '编程语言基础，已点亮 L2' },
-  { id: 'code-quality', x: 300, y: 88, tracks: 'software', shape: 'halo', halo: 25, core: 9, textY: 34, levelY: 50, label: '代码质量', ariaLabel: '代码质量，已点亮 L2' },
-  { id: 'testing', x: 430, y: 160, tracks: 'software', shape: 'ring', halo: 18, core: 7, textY: 32, levelY: 48, label: '自动化测试', ariaLabel: '自动化测试，待补充证明' },
-  { id: 'system-design', x: 610, y: 108, tracks: 'software', shape: 'orbit', halo: 23, core: 7, textY: 35, levelY: 51, label: '系统设计', ariaLabel: '系统设计，未点亮，有新建议' },
-  { id: 'requirements', x: 540, y: 225, tracks: 'general software', shape: 'orbit', halo: 30, core: 11, textY: 40, levelY: 56, label: '需求理解', ariaLabel: '需求理解，当前 L3，待复核' },
-  { id: 'observability', x: 170, y: 310, tracks: 'platform', shape: 'halo', halo: 24, core: 9, textY: 35, levelY: 51, label: '可观测性', ariaLabel: '可观测性，已点亮 L2' },
-  { id: 'k8s', x: 345, y: 270, tracks: 'platform', shape: 'orbit', halo: 25, core: 8, textY: 38, levelY: 54, label: '容器与编排', ariaLabel: '容器与编排，未点亮，有新建议' },
-  { id: 'slo', x: 520, y: 338, tracks: 'platform', shape: 'ring', halo: 17, core: 6, textY: 31, levelY: 47, label: 'SLO 设计', ariaLabel: 'SLO 设计，未点亮' },
-  { id: 'automation', x: 705, y: 278, tracks: 'platform', shape: 'ring', halo: 17, core: 6, textY: 31, levelY: 47, label: '自动化运维', ariaLabel: '自动化运维，未点亮' },
-  { id: 'data-processing', x: 900, y: 90, tracks: 'ai', shape: 'halo', halo: 23, core: 8, textY: 34, levelY: 50, label: '数据处理', ariaLabel: '数据处理，已点亮 L2' },
-  { id: 'ai-integration', x: 765, y: 145, tracks: 'ai', shape: 'ring', halo: 17, core: 6, textY: 31, levelY: 47, label: 'AI 应用集成', ariaLabel: 'AI 应用集成，未点亮' },
-  { id: 'model-evaluation', x: 925, y: 235, tracks: 'ai', shape: 'ring', halo: 17, core: 6, textY: 31, levelY: 47, label: '模型评估', ariaLabel: '模型评估，未点亮' },
-  { id: 'collaboration', x: 835, y: 350, tracks: 'general', shape: 'orbit', halo: 23, core: 8, textY: 36, levelY: 52, label: '跨团队协作', ariaLabel: '跨团队协作，审批中' },
-  { id: 'communication', x: 355, y: 395, tracks: 'general software', shape: 'halo', halo: 23, core: 8, textY: 34, levelY: 50, label: '技术方案表达', ariaLabel: '技术方案表达，已点亮 L2' },
-];
-
-const GALAXY_LINES: GalaxyLineDef[] = [
-  { from: 'programming', to: 'code-quality', x1: 130, y1: 120, x2: 300, y2: 88, track: 'software' },
-  { from: 'code-quality', to: 'testing', x1: 300, y1: 88, x2: 430, y2: 160, track: 'software' },
-  { from: 'testing', to: 'system-design', x1: 430, y1: 160, x2: 610, y2: 108, track: 'software' },
-  { from: 'observability', to: 'k8s', x1: 170, y1: 310, x2: 345, y2: 270, track: 'platform' },
-  { from: 'k8s', to: 'slo', x1: 345, y1: 270, x2: 520, y2: 338, track: 'platform' },
-  { from: 'slo', to: 'automation', x1: 520, y1: 338, x2: 705, y2: 278, track: 'platform' },
-  { from: 'system-design', to: 'ai-integration', x1: 610, y1: 108, x2: 765, y2: 145, track: 'ai' },
-  { from: 'ai-integration', to: 'data-processing', x1: 765, y1: 145, x2: 900, y2: 90, track: 'ai' },
-  { from: 'ai-integration', to: 'model-evaluation', x1: 765, y1: 145, x2: 925, y2: 235, track: 'ai' },
-  { from: 'testing', to: 'requirements', x1: 430, y1: 160, x2: 540, y2: 225, track: 'general' },
-  { from: 'requirements', to: 'automation', x1: 540, y1: 225, x2: 705, y2: 278, track: 'general' },
-  { from: 'requirements', to: 'ai-integration', x1: 540, y1: 225, x2: 765, y2: 145, track: 'general' },
-  { from: 'requirements', to: 'communication', x1: 540, y1: 225, x2: 355, y2: 395, track: 'general' },
-  { from: 'k8s', to: 'testing', x1: 345, y1: 270, x2: 430, y2: 160, track: 'platform software' },
-  { from: 'automation', to: 'model-evaluation', x1: 705, y1: 278, x2: 925, y2: 235, track: 'ai platform' },
-];
-
-const GALAXY_TAIL: GalaxyLineDef = {
-  from: 'automation', to: 'collaboration', x1: 705, y1: 278, x2: 835, y2: 350, track: 'general',
-};
-
-const GALAXY_PARTICLES: [number, number, number][] = [
-  [74, 74, 1.4], [185, 206, 1], [266, 36, 1.2], [376, 225, 1.1], [482, 72, 1.5],
-  [575, 385, 1.2], [680, 48, 1], [804, 276, 1.4], [958, 174, 1.1], [1010, 365, 1.5],
-];
-
-const GALAXY_SKILL_META: Record<string, GalaxySkillView> = {
-  slo: { title: '服务稳定性与 SLO 设计', category: '平台工程', currentLevel: 0, targetLevel: 2, status: 'unlit', explanation: '尚未发现足够证据。完成一次服务 SLO 方案设计与评审后可主动申请。' },
-  automation: { title: '自动化运维', category: '平台工程', currentLevel: 0, targetLevel: 2, status: 'unlit', explanation: '尚未点亮。可提交自动化脚本、应用范围和效率改善结果作为证明。' },
-  'ai-integration': { title: 'AI 应用集成', category: '数据与 AI', currentLevel: 0, targetLevel: 2, status: 'unlit', explanation: '尚未点亮。完成可运行的模型服务集成并提供评估结果后可申请。' },
-  'model-evaluation': { title: '模型评估', category: '数据与 AI', currentLevel: 0, targetLevel: 2, status: 'unlit', explanation: '尚未点亮。建议先完成一套包含指标、样本和误差分析的评估方案。' },
-};
-
-const SKILL_TRACKS: { key: string; label: string }[] = [
-  { key: 'all', label: '全部星图' },
-  { key: 'software', label: '软件开发' },
-  { key: 'platform', label: '平台工程' },
-  { key: 'ai', label: '数据与 AI' },
+interface SkillEntry { key: string; item: CertificationItem; litLevel: number; track: string }
+interface Point { x: number; y: number }
+const CENTER = { x: 560, y: 280 };
+const MIN_ZOOM = 0.6;
+const MAX_ZOOM = 3.5;
+const TRACKS = [
+  { key: 'all', label: '全部星图' }, { key: 'software', label: '软件开发' },
+  { key: 'platform', label: '平台工程' }, { key: 'ai', label: '数据与 AI' },
   { key: 'general', label: '通用能力' },
 ];
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
+const TRACK_WORDS: Record<string, string[]> = {
+  software: ['软件', '编程', '代码', '测试', '工程质量', '系统设计'],
+  platform: ['平台', '容器', '云原生', '运维', '稳定性', 'SLO'],
+  ai: ['数据', 'AI', '模型', '算法'],
+};
+function trackOf(category: string): string {
+  for (const [track, words] of Object.entries(TRACK_WORDS))
+    if (words.some(word => category.includes(word))) return track;
+  return 'general';
 }
-
-function nodeStatusClass(status: string): string {
-  if (status === 'approved') return 'is-lit';
-  if (status === 'pending') return 'is-pending';
-  if (status === 'review' || status === 'review_submitted') return 'is-review';
-  if (status === 'returned' || status === 'rejected') return 'is-returned';
-  return 'is-unlit';
+function labelOf(item: CertificationItem, litLevel = 0): string {
+  if (item.status === 'approved') return `L${item.currentLevel} · 已点亮`;
+  if (item.status === 'review' || item.status === 'review_submitted') return `L${litLevel || item.currentLevel} · 待复核`;
+  if (item.status === 'pending') return litLevel ? `L${litLevel} · 审批中` : '审批中';
+  if (item.status === 'returned') return '待补充';
+  return item.statusLabel || '待处理';
 }
-
-function starLevelText(skill: GalaxySkillView): string {
-  if (skill.status === 'approved') return `L${skill.targetLevel} · 已点亮`;
-  if (skill.status === 'pending') return '审批中';
-  if (skill.status === 'review') return `L${skill.currentLevel} · 待复核`;
-  if (skill.status === 'review_submitted') return `L${skill.currentLevel} · 已补证`;
-  if (skill.status === 'returned') return '待补充';
-  if (skill.status === 'ready') return '有新建议';
-  return '未点亮';
+function actionOf(status: string): string {
+  if (status === 'approved') return '查看认证记录';
+  if (status === 'review' || status === 'review_submitted') return '查看复核详情';
+  if (status === 'pending') return '查看审批进度';
+  if (status === 'returned') return '补充证明';
+  return '查看技能详情';
 }
-
+function preferredItem(items: CertificationItem[]): CertificationItem {
+  return items.find(item => item.status === 'pending' || item.status === 'review' || item.status === 'review_submitted')
+    ?? items.find(item => item.status === 'approved') ?? items[0];
+}
+function statusClass(item: CertificationItem, litLevel: number): string {
+  if (item.status === 'pending') return 'is-pending';
+  if (item.status === 'review' || item.status === 'review_submitted') return 'is-review';
+  if (item.status === 'returned') return 'is-returned';
+  if (item.status === 'ready') return 'is-ready';
+  return litLevel ? 'is-lit' : 'is-unlit';
+}
+function titleLines(title: string): string[] {
+  return title.length > 9 ? [title.slice(0, 9), title.slice(9)] : [title];
+}
+function relationText(edge: SkillRelationEdge): string {
+  const parts = [];
+  if (edge.sharedCompetencies.length) parts.push(`共同子能力：${edge.sharedCompetencies.join('、')}`);
+  if (edge.sharedTitleLevels.length) parts.push(`共同职称要求：${edge.sharedTitleLevels.join('、')}`);
+  return parts.join('；');
+}
+function relationType(edge: SkillRelationEdge): string {
+  if (edge.sharedCompetencies.length && edge.sharedTitleLevels.length) return 'both';
+  return edge.sharedCompetencies.length ? 'competency' : 'title';
+}
+function layoutGraph(skills: SkillEntry[], edges: SkillRelationEdge[]): Record<string, Point> {
+  const ordered = [...skills].sort((a, b) => a.key.localeCompare(b.key));
+  if (ordered.length === 1) return { [ordered[0].key]: CENTER };
+  const nodes = ordered.map((skill, index) => {
+    const angle = index * 2.399963229728653;
+    const radius = 58 + Math.sqrt(index + 1) * 68;
+    return { key: skill.key, slug: skill.item.skillSlug, track: skill.track,
+      x: CENTER.x + Math.cos(angle) * radius, y: CENTER.y + Math.sin(angle) * radius * .72,
+      vx: 0, vy: 0 };
+  });
+  const bySlug = new Map(nodes.map((node, index) => [node.slug, index]));
+  const links = edges.map(edge => [bySlug.get(edge.fromSkillSlug), bySlug.get(edge.toSkillSlug)] as const)
+    .filter((pair): pair is readonly [number, number] => pair[0] !== undefined && pair[1] !== undefined);
+  const anchors: Record<string, Point> = {
+    software: { x: 420, y: 210 }, platform: { x: 700, y: 215 },
+    ai: { x: 650, y: 390 }, general: { x: 430, y: 395 },
+  };
+  for (let tick = 0; tick < 150; tick++) {
+    const forces = nodes.map(node => ({
+      x: (CENTER.x - node.x) * .008 + ((anchors[node.track]?.x ?? CENTER.x) - node.x) * .002,
+      y: (CENTER.y - node.y) * .008 + ((anchors[node.track]?.y ?? CENTER.y) - node.y) * .002,
+    }));
+    for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
+      const dx = nodes[j].x - nodes[i].x;
+      const dy = nodes[j].y - nodes[i].y;
+      const distance = Math.max(20, Math.hypot(dx, dy));
+      const push = 8500 / (distance * distance);
+      forces[i].x -= dx / distance * push; forces[i].y -= dy / distance * push;
+      forces[j].x += dx / distance * push; forces[j].y += dy / distance * push;
+    }
+    for (const [from, to] of links) {
+      const dx = nodes[to].x - nodes[from].x;
+      const dy = nodes[to].y - nodes[from].y;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const pull = (distance - 175) * .014;
+      forces[from].x += dx / distance * pull; forces[from].y += dy / distance * pull;
+      forces[to].x -= dx / distance * pull; forces[to].y -= dy / distance * pull;
+    }
+    nodes.forEach((node, index) => {
+      node.vx = (node.vx + forces[index].x) * .76;
+      node.vy = (node.vy + forces[index].y) * .76;
+      node.x = Math.max(80, Math.min(1040, node.x + node.vx));
+      node.y = Math.max(75, Math.min(485, node.y + node.vy));
+    });
+  }
+  return Object.fromEntries(nodes.map(node => [node.key, {
+    x: Math.max(75, Math.min(1045, CENTER.x + (node.x - CENTER.x) * 1.6)), y: node.y,
+  }]));
+}
 export interface EvidenceGalaxyProps {
   certifications: CertificationItem[];
   onOpenDetail: (id: string) => void;
-  onApply: (skillTitle: string | null) => void;
+  onApply: (skillSlug: string | null) => void;
 }
-
-const EvidenceGalaxy = ({ certifications, onOpenDetail, onApply }: EvidenceGalaxyProps) => {
-  const { user } = useAuth();
-  const { workspace } = useEmployeeWorkspace();
-  const stageRef = useRef<HTMLDivElement>(null);
-  const cameraRef = useRef<HTMLDivElement>(null);
-  const viewRef = useRef({ tiltX: 0, tiltY: 0, zoom: 1 });
-  const dragRef = useRef({ dragging: false, moved: false, startX: 0, startY: 0 });
-  const [dragging, setDragging] = useState<boolean>(false);
-  const [cruising, setCruising] = useState<boolean>(() =>
-    !window.matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const [legendEmphasized, setLegendEmphasized] = useState<boolean>(false);
-  const [selectedNode, setSelectedNode] = useState<string>('requirements');
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  const [track, setTrack] = useState<string>('all');
-
-  const applyView = () => {
-    const camera = cameraRef.current;
-    if (!camera) return;
-    camera.style.setProperty('--tilt-x', `${viewRef.current.tiltX}deg`);
-    camera.style.setProperty('--tilt-y', `${viewRef.current.tiltY}deg`);
-    camera.style.setProperty('--zoom', viewRef.current.zoom.toFixed(2));
-  };
-
+export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }: EvidenceGalaxyProps) {
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [inspectedKey, setInspectedKey] = useState<string | null>(null);
+  const [track, setTrack] = useState('all');
+  const [edges, setEdges] = useState<SkillRelationEdge[]>([]);
+  const [relationState, setRelationState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [viewport, setViewport] = useState({ scale: 1, x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
+  const [nodeOffsets, setNodeOffsets] = useState<Record<string, Point>>({});
+  const svgRef = useRef<SVGSVGElement>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number; offsetX: number; offsetY: number;
+    nodeKey: string | null; moved: boolean } | null>(null);
+  const suppressClick = useRef(false);
+  const skills = useMemo<SkillEntry[]>(() => {
+    const grouped = new Map<string, CertificationItem[]>();
+    for (const item of certifications) {
+      const key = item.skillSlug || item.title;
+      grouped.set(key, [...(grouped.get(key) ?? []), item]);
+    }
+    return [...grouped].map(([key, items]) => ({
+      key, item: preferredItem(items),
+      litLevel: Math.max(0, ...items.filter(item => item.status === 'approved').map(item => item.currentLevel)),
+      track: trackOf(items[0].category),
+    }));
+  }, [certifications]);
+  const slugList = useMemo(() => skills.map(skill => skill.item.skillSlug).filter((slug): slug is string => !!slug).sort().join(','), [skills]);
   useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
-    const onWheel = (event: WheelEvent) => {
+    let active = true;
+    setRelationState('loading');
+    employeeApi.getSkillRelations(slugList ? slugList.split(',') : [])
+      .then(result => { if (active) { setEdges(result.edges); setRelationState('ready'); } })
+      .catch(() => { if (active) { setEdges([]); setRelationState('error'); } });
+    return () => { active = false; };
+  }, [slugList]);
+
+  const visible = skills.filter(skill => track === 'all' || skill.track === track);
+  const visibleSlugs = new Set(visible.map(skill => skill.item.skillSlug).filter((slug): slug is string => !!slug));
+  const visibleEdges = edges.filter(edge => visibleSlugs.has(edge.fromSkillSlug) && visibleSlugs.has(edge.toSkillSlug));
+  const layoutKey = visible.map(skill => skill.key).join('|');
+  const basePositions = useMemo(() => layoutGraph(visible, edges), [layoutKey, edges]);
+  const pointFor = (key: string): Point => {
+    const point = basePositions[key] ?? CENTER;
+    const offset = nodeOffsets[key];
+    return { x: point.x + (offset?.x ?? 0), y: point.y + (offset?.y ?? 0) };
+  };
+  const skillBySlug = new Map(visible.map(skill => [skill.item.skillSlug, skill]));
+  const relationCount = (skill: SkillEntry) => edges.filter(edge =>
+    edge.fromSkillSlug === skill.item.skillSlug || edge.toSkillSlug === skill.item.skillSlug).length;
+  const selected = visible.find(skill => skill.key === selectedKey)
+    ?? [...visible].sort((a, b) => relationCount(b) - relationCount(a)
+      || Number(b.item.status === 'approved') - Number(a.item.status === 'approved'))[0];
+  const inspected = visible.find(skill => skill.key === inspectedKey) ?? selected;
+  const focusKey = hoveredKey ?? (visible.some(skill => skill.key === inspectedKey) ? inspectedKey : null);
+  const focusSlug = visible.find(skill => skill.key === focusKey)?.item.skillSlug;
+  const neighborSlugs = new Set(visibleEdges.filter(edge => edge.fromSkillSlug === focusSlug || edge.toSkillSlug === focusSlug)
+    .flatMap(edge => [edge.fromSkillSlug, edge.toSkillSlug]));
+  const approvedCount = new Set(certifications.filter(item => item.status === 'approved').map(item => item.skillSlug ?? item.title)).size;
+  const readyCount = certifications.filter(item => item.status === 'ready').length;
+  const inspect = (key: string) => setInspectedKey(key);
+  const activate = (key: string) => {
+    setSelectedKey(key); setInspectedKey(key);
+    const point = pointFor(key);
+    setViewport(current => ({ ...current, x: CENTER.x - point.x * current.scale, y: CENTER.y - point.y * current.scale }));
+  };
+  const inspectedDescription = inspected?.item.explanation?.trim()
+    || `${inspected?.item.title ?? '该技能'}当前状态为${inspected?.item.statusLabel || '待确认'}。`;
+  const svgPoint = (svg: SVGSVGElement, clientX: number, clientY: number) => {
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return null;
+    const point = svg.createSVGPoint();
+    point.x = clientX;
+    point.y = clientY;
+    return point.matrixTransform(matrix.inverse());
+  };
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const handleWheel = (event: WheelEvent) => {
       event.preventDefault();
-      setCruising(false);
-      const view = viewRef.current;
-      view.zoom = clamp(view.zoom + (event.deltaY < 0 ? 0.08 : -0.08), 0.82, 1.34);
-      applyView();
+      const point = svgPoint(svg, event.clientX, event.clientY);
+      if (!point) return;
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 350 : 1);
+      setViewport(current => {
+        const scale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, current.scale * Math.exp(-delta * 0.0008)));
+        if (scale === current.scale) return current;
+        return {
+          scale,
+          x: point.x - (point.x - current.x) * scale / current.scale,
+          y: point.y - (point.y - current.y) * scale / current.scale,
+        };
+      });
     };
-    stage.addEventListener('wheel', onWheel, { passive: false });
-    return () => stage.removeEventListener('wheel', onWheel);
-  }, []);
-
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
-    const target = event.target;
-    if (target instanceof Element && target.closest('button, [data-skill-node]')) return;
-    setCruising(false);
-    dragRef.current = { dragging: true, moved: false, startX: event.clientX, startY: event.clientY };
-    setDragging(true);
-    stageRef.current?.setPointerCapture(event.pointerId);
+    svg.addEventListener('wheel', handleWheel, { passive: false });
+    return () => svg.removeEventListener('wheel', handleWheel);
+  }, [selected?.key]);
+  const handlePointerDown = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.button !== 0) return;
+    const point = svgPoint(event.currentTarget, event.clientX, event.clientY);
+    if (!point) return;
+    const nodeKey = event.target instanceof Element ? event.target.closest('[data-skill-key]')?.getAttribute('data-skill-key') ?? null : null;
+    const offset = nodeKey ? nodeOffsets[nodeKey] : null;
+    drag.current = { pointerId: event.pointerId, x: point.x, y: point.y,
+      offsetX: nodeKey ? offset?.x ?? 0 : viewport.x,
+      offsetY: nodeKey ? offset?.y ?? 0 : viewport.y, nodeKey, moved: false };
+    suppressClick.current = false;
   };
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.dragging) return;
-    const drag = dragRef.current;
-    const deltaX = event.clientX - drag.startX;
-    const deltaY = event.clientY - drag.startY;
-    if (Math.abs(deltaX) + Math.abs(deltaY) > 2) drag.moved = true;
-    const view = viewRef.current;
-    view.tiltY = clamp(view.tiltY + deltaX * 0.08, -18, 18);
-    view.tiltX = clamp(view.tiltX - deltaY * 0.06, -12, 12);
-    drag.startX = event.clientX;
-    drag.startY = event.clientY;
-    applyView();
-  };
-
-  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.dragging) return;
-    dragRef.current.dragging = false;
-    setDragging(false);
-    const stage = stageRef.current;
-    if (stage && stage.hasPointerCapture(event.pointerId)) stage.releasePointerCapture(event.pointerId);
-  };
-
-  const handleControl = (control: string) => {
-    if (control === 'cruise') {
-      setCruising((prev: boolean) => !prev);
-      return;
+  const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const start = drag.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+    const point = svgPoint(event.currentTarget, event.clientX, event.clientY);
+    if (!point) return;
+    const dx = point.x - start.x;
+    const dy = point.y - start.y;
+    if (!start.moved && Math.hypot(dx, dy) < 5) return;
+    if (!start.moved) {
+      start.moved = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setIsDragging(true);
     }
-    setCruising(false);
-    const view = viewRef.current;
-    if (control === 'zoom-in') view.zoom = clamp(view.zoom + 0.1, 0.82, 1.34);
-    if (control === 'zoom-out') view.zoom = clamp(view.zoom - 0.1, 0.82, 1.34);
-    if (control === 'reset') {
-      view.tiltX = 0;
-      view.tiltY = 0;
-      view.zoom = 1;
-    }
-    applyView();
+    if (start.nodeKey) {
+      const key = start.nodeKey;
+      setNodeOffsets(current => ({ ...current, [key]: { x: start.offsetX + dx / viewport.scale, y: start.offsetY + dy / viewport.scale } }));
+    } else setViewport(current => ({ ...current, x: start.offsetX + dx, y: start.offsetY + dy }));
+  };
+  const handlePointerEnd = (event: ReactPointerEvent<SVGSVGElement>) => {
+    const start = drag.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+    suppressClick.current = start.moved;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    drag.current = null;
+    setIsDragging(false);
   };
 
-  const findCertification = (id: string) => {
-    const label = GALAXY_NODES.find(node => node.id === id)?.label;
-    return certifications.find(entry => entry.id === id || Boolean(label && (entry.title === label || entry.title.startsWith(`${label}（`))));
-  };
-  const getSkill = (id: string): GalaxySkillView | undefined => {
-    const item = findCertification(id);
-    if (item) {
-      return {
-        title: item.title,
-        category: item.category,
-        currentLevel: item.currentLevel,
-        targetLevel: item.targetLevel,
-        status: item.status,
-        explanation: item.explanation,
-      };
-    }
-    return GALAXY_SKILL_META[id];
-  };
-
-  const highlightId = hoveredNode ?? selectedNode;
-  const neighbors = useMemo(() => {
-    const set = new Set<string>();
-    for (const line of [...GALAXY_LINES, GALAXY_TAIL]) {
-      if (line.from === highlightId) set.add(line.to);
-      if (line.to === highlightId) set.add(line.from);
-    }
-    return set;
-  }, [highlightId]);
-
-  const selectionSkill = getSkill(selectedNode);
-
-  const selectionActionLabel = (status: string): string => {
-    if (status === 'approved') return '查看认证记录';
-    if (status === 'review' || status === 'review_submitted') return '查看复核详情';
-    if (status === 'pending') return '查看审批进度';
-    if (status === 'returned') return '补充证明';
-    if (status === 'ready') return '查看点亮建议';
-    return '申请点亮';
-  };
-
-  const selectionLevelText = (skill: GalaxySkillView): string => {
-    if (skill.status === 'approved') return `L${skill.targetLevel} · 已点亮`;
-    if (skill.status === 'review' || skill.status === 'review_submitted') return `L${skill.currentLevel} · 待复核`;
-    if (skill.currentLevel) return `L${skill.currentLevel} → L${skill.targetLevel}`;
-    return `目标 L${skill.targetLevel}`;
-  };
-
-  const handleNodeKeyDown = (event: React.KeyboardEvent<SVGGElement>, id: string) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
-    setSelectedNode(id);
-  };
-
-  const selectionInCertifications = selectionSkill
-    ? Boolean(findCertification(selectedNode))
-    : false;
-
-  return (
-    <section className="skill-galaxy panel" aria-labelledby="skill-map-title">
-      <header className="galaxy-header">
-        <div><span className="cert-kicker">我的能力星图</span><h2 id="skill-map-title">技能地图</h2><p>已点亮 {workspace?.metrics.certifiedSkillCount ?? 0} 项技能，{certifications.filter(item => item.status === 'ready').length} 项出现新的成长信号</p></div>
-        <div className="galaxy-actions"><button className="galaxy-help" id="galaxy-help" onClick={() => setLegendEmphasized((prev: boolean) => !prev)}>{legendEmphasized ? '已突出图例' : '图例说明'}</button><button className="primary" id="open-self-application" onClick={() => onApply(null)}>申请点亮技能</button></div>
-      </header>
-      <div className="sequence-tabs" role="tablist" aria-label="选择技能序列">
-        {SKILL_TRACKS.map((item) => (
-          <button
-            key={item.key}
-            className={track === item.key ? 'active' : ''}
-            aria-selected={track === item.key}
-            onClick={() => setTrack(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
+  return <section className="skill-galaxy panel skill-constellation" aria-labelledby="skill-map-title">
+    <header className="galaxy-header">
+      <div><span className="cert-kicker">我的能力星图</span><h2 id="skill-map-title">技能星图</h2>
+        <p>已点亮 {approvedCount} 项技能，{readyCount} 项出现新的成长信号</p></div>
+      <div className="galaxy-actions"><button className="primary" onClick={() => onApply(null)}>申请点亮技能</button></div>
+    </header>
+    <div className="sequence-tabs" role="tablist" aria-label="选择技能序列">
+      {TRACKS.map(option => <button key={option.key} role="tab" className={track === option.key ? 'active' : ''} aria-selected={track === option.key} onClick={() => {
+        setTrack(option.key); setViewport({ scale: 1, x: 0, y: 0 }); setNodeOffsets({}); setHoveredKey(null); setInspectedKey(null);
+      }}>{option.label}</button>)}
+    </div>
+    <div className="constellation-guide"><span>悬停高亮关联 · 点击查看技能 · 双击聚焦 · 拖动节点或画布 · 滚轮缩放</span>
+      <div><i className="constellation-key competency" />共同子能力<i className="constellation-key title" />共同职称要求<i className="constellation-key both" />两种依据</div></div>
+    {relationState === 'error' && <p className="constellation-notice">关联规则暂时无法读取；星点仍可查看，连线会在服务恢复后显示。</p>}
+    {selected ? <>
+      <div className={`constellation-frame${isDragging ? ' is-dragging' : ''}`}>
+        <button className="constellation-reset" type="button" onClick={() => { setViewport({ scale: 1, x: 0, y: 0 }); setNodeOffsets({}); }}>重置视图</button>
+        <svg ref={svgRef} className="constellation-svg" viewBox="0 0 1120 580" role="group" aria-label={`技能关联星图，共${visible.length}项技能，${visibleEdges.length}条规则关联。可拖动节点与画布、滚轮缩放。`}
+          onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd} onPointerCancel={handlePointerEnd}>
+          <g transform={`translate(${viewport.x} ${viewport.y}) scale(${viewport.scale})`}>
+          <g className="constellation-connections" aria-hidden="true">{visibleEdges.map(edge => {
+            const from = skillBySlug.get(edge.fromSkillSlug);
+            const to = skillBySlug.get(edge.toSkillSlug);
+            if (!from || !to) return null;
+            const a = pointFor(from.key), b = pointFor(to.key);
+            const active = edge.fromSkillSlug === focusSlug || edge.toSkillSlug === focusSlug;
+            return <line key={`${edge.fromSkillSlug}:${edge.toSkillSlug}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+              className={`connection-${relationType(edge)}${active ? ' is-highlighted' : ''}`}><title>{relationText(edge)}</title></line>;
+          })}</g>
+          {visible.map(skill => {
+            const point = pointFor(skill.key);
+            const isFocus = skill.key === focusKey;
+            const isNeighbor = !!skill.item.skillSlug && neighborSlugs.has(skill.item.skillSlug);
+            return <g key={skill.key} data-skill-key={skill.key}
+              className={`constellation-node ${statusClass(skill.item, skill.litLevel)}${isFocus ? ' is-focused' : ''}${focusKey && !isFocus && !isNeighbor ? ' is-muted' : ''}`}
+              transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0}
+              aria-label={`${skill.item.title}，${labelOf(skill.item, skill.litLevel)}，${relationCount(skill)}项规则关联`}
+              onPointerEnter={() => setHoveredKey(skill.key)} onPointerLeave={() => setHoveredKey(current => current === skill.key ? null : current)}
+              onClick={() => { if (!suppressClick.current) inspect(skill.key); }}
+              onDoubleClick={() => { if (!suppressClick.current) activate(skill.key); }}
+              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault(); if (event.shiftKey) activate(skill.key); else inspect(skill.key);
+              } }}>
+              <circle className="node-hit" r="34" />
+              <circle className="node-glow" r="26" />
+              <circle className="node-orbit" r="25" />
+              <circle className="node-ring" r="20" />
+              <circle className="node-core" r="9" />
+              <text className="node-title" y="39">{titleLines(skill.item.title).map((line, index) => <tspan key={index} x="0" dy={index ? 14 : 0}>{line}</tspan>)}</text>
+              <text className="node-status" y={titleLines(skill.item.title).length > 1 ? 68 : 54}>{labelOf(skill.item, skill.litLevel)}</text>
+            </g>;
+          })}
+          </g>
+        </svg>
       </div>
-      <div className="galaxy-stage" ref={stageRef} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
-        <div className="galaxy-controls" aria-label="技能地图视角控制">
-          <button aria-label="缩小技能地图" onClick={() => handleControl('zoom-out')}>−</button>
-          <button className={`cruise-control ${cruising ? 'active' : ''}`} aria-pressed={cruising} onClick={() => handleControl('cruise')}>{cruising ? '暂停巡航' : '自动巡航'}</button>
-          <button onClick={() => handleControl('reset')}>重置视角</button>
-          <button aria-label="放大技能地图" onClick={() => handleControl('zoom-in')}>＋</button>
-          <span>拖拽旋转 · 滚轮缩放</span>
-        </div>
-        <div
-          className={`galaxy-camera ${cruising ? 'is-cruising' : ''} ${dragging ? 'is-dragging' : ''}`}
-          id="galaxy-camera"
-          ref={cameraRef}
-        >
-          <svg className="constellation-map" viewBox="0 0 1080 450" role="img" aria-label={`${user.name}的技能关系地图，技能按软件开发、平台工程、数据与 AI、通用能力连接`}>
-            <defs>
-              <radialGradient id="galaxy-core" cx="50%" cy="50%" r="50%"><stop offset="0" stopColor="#6578ff" stopOpacity=".24" /><stop offset="1" stopColor="#111a32" stopOpacity="0" /></radialGradient>
-              <filter id="node-glow" x="-80%" y="-80%" width="260%" height="260%"><feGaussianBlur stdDeviation="7" result="blur" /><feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge></filter>
-            </defs>
-            <ellipse cx="540" cy="225" rx="330" ry="160" fill="url(#galaxy-core)" />
-            <g className="orbit-system" aria-hidden="true"><ellipse cx="540" cy="225" rx="250" ry="105" /><ellipse cx="540" cy="225" rx="390" ry="175" /><ellipse cx="540" cy="225" rx="470" ry="205" /></g>
-            <g className="cosmic-particles" aria-hidden="true">
-              {GALAXY_PARTICLES.map(([cx, cy, r]: [number, number, number]) => (
-                <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r={r} />
-              ))}
-            </g>
-            <g className="constellation-lines">
-              {GALAXY_LINES.map((line) => {
-                const tracks = line.track.split(' ');
-                const connected = line.from === highlightId || line.to === highlightId;
-                const dimmed = track !== 'all' && !tracks.includes(track);
-                return (
-                  <line
-                    key={`${line.from}-${line.to}`}
-                    data-track={line.track}
-                    data-from={line.from}
-                    data-to={line.to}
-                    x1={line.x1}
-                    y1={line.y1}
-                    x2={line.x2}
-                    y2={line.y2}
-                    className={`${connected ? 'is-connected' : ''} ${dimmed ? 'is-dimmed' : ''} ${track !== 'all' && tracks.includes(track) ? 'is-active-track' : ''}`}
-                  />
-                );
-              })}
-            </g>
-            {GALAXY_NODES.map((node) => {
-              const skill = getSkill(node.id);
-              const status = skill?.status ?? 'unlit';
-              const nodeTracks = node.tracks.split(' ');
-              const dimmed = track !== 'all' && !nodeTracks.includes(track);
-              const className = [
-                'skill-star',
-                nodeStatusClass(status),
-                node.id === selectedNode ? 'is-selected' : '',
-                neighbors.has(node.id) ? 'is-neighbor' : '',
-                dimmed ? 'is-dimmed' : '',
-              ].filter(Boolean).join(' ');
-              return (
-                <g
-                  key={node.id}
-                  className={className}
-                  data-skill-node={node.id}
-                  data-track={node.tracks}
-                  data-status={status}
-                  tabIndex={0}
-                  role="button"
-                  aria-label={`${skill?.title ?? node.label}，${skill ? starLevelText(skill) : '未点亮'}`}
-                  transform={`translate(${node.x} ${node.y})`}
-                  onClick={() => setSelectedNode(node.id)}
-                  onKeyDown={(event: React.KeyboardEvent<SVGGElement>) => handleNodeKeyDown(event, node.id)}
-                  onPointerEnter={() => setHoveredNode(node.id)}
-                  onPointerLeave={() => setHoveredNode(null)}
-                >
-                  {node.shape === 'halo' && <circle className="star-halo" r={node.halo} />}
-                  {node.shape === 'ring' && <circle className="star-ring" r={node.halo} />}
-                  {node.shape === 'orbit' && <circle className="signal-orbit" r={node.halo} />}
-                  <circle className="star-core" r={node.core} />
-                  <text y={node.textY}>{node.label}</text>
-                  <text className="star-level" y={node.levelY}>{skill ? starLevelText(skill) : '未点亮'}</text>
-                </g>
-              );
-            })}
-            <line
-              className={`constellation-tail ${GALAXY_TAIL.from === highlightId || GALAXY_TAIL.to === highlightId ? 'is-connected' : ''} ${track !== 'all' && !GALAXY_TAIL.track.split(' ').includes(track) ? 'is-dimmed' : ''} ${track !== 'all' && GALAXY_TAIL.track.split(' ').includes(track) ? 'is-active-track' : ''}`}
-              data-track={GALAXY_TAIL.track}
-              data-from={GALAXY_TAIL.from}
-              data-to={GALAXY_TAIL.to}
-              x1={GALAXY_TAIL.x1}
-              y1={GALAXY_TAIL.y1}
-              x2={GALAXY_TAIL.x2}
-              y2={GALAXY_TAIL.y2}
-            />
-          </svg>
-        </div>
-        <div className={`map-legend ${legendEmphasized ? 'is-emphasized' : ''}`} id="map-legend"><span><i className="lit-dot"></i>已点亮</span><span><i className="review-dot"></i>待复核</span><span><i className="pending-dot"></i>审批中</span><span><i className="signal-dot"></i>有新建议</span><span><i className="dark-dot"></i>未点亮</span></div>
-        <div className="galaxy-selection" id="galaxy-selection" aria-live="polite">
-          {selectionSkill && (
-            <>
-              <div><b>{selectionSkill.title}</b><small>{selectionSkill.category} · {selectionLevelText(selectionSkill)}</small></div>
-              <p>{selectionSkill.explanation}</p>
-              <button
-                onClick={() => {
-                  if (selectionInCertifications) onOpenDetail(findCertification(selectedNode)!.id);
-                  else onApply(selectionSkill.title);
-                }}
-              >
-                {selectionActionLabel(selectionSkill.status)}
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-};
-
-export default EvidenceGalaxy;
+      <div className="constellation-selection" aria-live="polite"><div><b>{inspected.item.title}</b><small>{inspected.item.category} · {labelOf(inspected.item, inspected.litLevel)}</small></div>
+        <p>{inspectedDescription}</p><button onClick={() => onOpenDetail(inspected.item.id)}>{actionOf(inspected.item.status)}</button></div>
+    </> : <p className="constellation-notice">当前序列没有技能事项。你可以主动申请点亮技能。</p>}
+  </section>;
+}

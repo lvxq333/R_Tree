@@ -14,15 +14,15 @@ import type {
   SkillGrowthEvent,
 } from '@shared/api.interface';
 import { useUI } from './ui-context';
+import { useAuth } from './auth-context';
 import { useEmployeeWorkspace } from './employee-workspace-context';
 import {
   COMMON_SKILL_NAMES,
   SEQUENCE_LABELS,
   SEQUENCE_OPTIONS,
-  growthCurvePath,
+  buildGrowthChart,
   type ChannelKey,
   type GapFilterKey,
-  type GrowthPoint,
   type GrowthRangeKey,
   type SequenceKey,
 } from './overview-data';
@@ -124,6 +124,7 @@ const RadarChart = ({ axes }: { axes: AbilityAxis[] }) => {
 
 const OverviewPage = () => {
   const { navigate, showToast } = useUI();
+  const { user } = useAuth();
   const { workspace, error: workspaceError } = useEmployeeWorkspace();
   const [sequences, setSequences] = useState<CareerSequenceView[] | null>(null);
   const [growthEvents, setGrowthEvents] = useState<SkillGrowthEvent[] | null>(null);
@@ -131,13 +132,13 @@ const OverviewPage = () => {
   const [gapActions, setGapActions] = useState<GapAction[]>([]);
   const [abilityStructure, setAbilityStructure] = useState<AbilityStructureResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [channel, setChannel] = useState<ChannelKey>('tech');
+  const [channel, setChannel] = useState<ChannelKey>(user.personnelRole === 'hr' ? 'management' : 'tech');
   const [sequence, setSequence] = useState<SequenceKey>('software');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('middle');
   const [sequenceMenuOpen, setSequenceMenuOpen] = useState<boolean>(false);
   const [gapFilter, setGapFilter] = useState<GapFilterKey>('all');
-  const [growthRange, setGrowthRange] = useState<GrowthRangeKey>('12m');
-  const [selectedGrowthDate, setSelectedGrowthDate] = useState<string | null>(null);
+  const [growthRange, setGrowthRange] = useState<GrowthRangeKey>('all');
+  const [selectedGrowthOrdinal, setSelectedGrowthOrdinal] = useState<number | null>(null);
   const [recentCertCount, setRecentCertCount] = useState(0);
   const pickerRef = useRef<HTMLDivElement>(null);
 
@@ -163,6 +164,8 @@ const OverviewPage = () => {
       .then((res) => {
         if (!cancelled) {
           setSequences(res.sequences);
+          if (res.preferredTrack === 'management') setChannel('management');
+          else setChannel('tech');
           // 默认聚焦偏好序列的「推荐下一站」节点；偏好序列缺失时取第一条有推荐下一站的序列
           const preferredEntry = res.preferredTrack
             ? res.sequences.flatMap(sequence => sequence.nodes.map(node => ({ sequenceKey: sequence.key, node })))
@@ -234,6 +237,14 @@ const OverviewPage = () => {
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    if (!gapItems || !workspace || !sequences || !abilityStructure || !growthEvents) return;
+    if (sessionStorage.getItem('idp-gap-focus')) {
+      document.querySelector('.gap-pool-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      sessionStorage.removeItem('idp-gap-focus');
+    }
+  }, [gapItems, workspace, sequences, abilityStructure, growthEvents]);
+
   if (loadError || (!workspace && workspaceError)) {
     return (
       <section className="page active" id="overview">
@@ -300,55 +311,14 @@ const OverviewPage = () => {
     okr: gapItems.filter((item: GapPoolItem) => item.source === 'okr').length,
     current: gapItems.filter((item: GapPoolItem) => item.source === 'current').length,
   };
-  // 默认选中第一条轨迹（入职职称认定）；用户点选后跟随所选事件。
-  const firstEvent = growthEvents[0];
-  const xStep = growthEvents.length > 1
-    ? (GROWTH_CHART_RIGHT - GROWTH_CHART_LEFT) / (growthEvents.length - 1)
-    : 0;
-  // 点亮序号语义：入职后第一次点亮 = 第 1 次，此后每次「新增点亮」+1；
-  // 累计数没有变化的事件（进阶认证）不产生新点位，末尾平段不再补终点。
-  const changePoints: (GrowthPoint & { ordinal: number })[] = [];
-  let prevTotal: number | null = null;
-  growthEvents.forEach((item: SkillGrowthEvent, index: number) => {
-    if (prevTotal === null || item.total !== prevTotal) {
-      changePoints.push({
-        x: GROWTH_CHART_LEFT + index * xStep,
-        y: 0,
-        event: item,
-        ordinal: changePoints.length + 1,
-      });
-      prevTotal = item.total;
-    }
-  });
-  const growthYMax = Math.max(5, changePoints.length);
-  const growthGridStep = growthYMax <= 8 ? 2 : 5;
-  const growthGridValues: number[] = [];
-  for (let value = growthGridStep; value <= growthYMax; value += growthGridStep) growthGridValues.push(value);
-  const yFor = (value: number): number =>
-    GROWTH_CHART_BOTTOM - (value / growthYMax) * (GROWTH_CHART_BOTTOM - GROWTH_CHART_TOP);
-  for (const point of changePoints) point.y = yFor(point.ordinal);
-
-  // 时间范围按事件月份窗口过滤可见的点亮点。
-  const rangeMonths = growthRange === '6m' ? 6 : growthRange === '12m' ? 12 : null;
-  const monthKey = (date: string): number => {
-    const [year, month] = date.split('.').map(Number);
-    return year * 12 + (month || 1);
-  };
-  const now = new Date();
-  const currentMonth = now.getFullYear() * 12 + (now.getMonth() + 1);
-  const chartGrowthPoints = rangeMonths === null
-    ? changePoints
-    : changePoints.filter(point => currentMonth - monthKey(point.event.date) < rangeMonths);
-  const linePath = growthCurvePath(chartGrowthPoints);
-  const areaPath = chartGrowthPoints.length >= 2
-    ? `${linePath} L ${chartGrowthPoints[chartGrowthPoints.length - 1].x} ${GROWTH_CHART_BOTTOM} L ${chartGrowthPoints[0].x} ${GROWTH_CHART_BOTTOM} Z`
-    : '';
-
-  const effectiveSelectedDate = selectedGrowthDate !== null && growthEvents.some((item: SkillGrowthEvent) => item.date === selectedGrowthDate)
-    ? selectedGrowthDate
-    : changePoints[0]?.event.date ?? '';
-  const selectedEvent = growthEvents.find((item: SkillGrowthEvent) => item.date === effectiveSelectedDate) ?? firstEvent;
-  const selectedOrdinal = changePoints.find(point => point.event.date === effectiveSelectedDate)?.ordinal ?? null;
+  const chart = buildGrowthChart(growthEvents, growthRange);
+  const chartGrowthPoints = chart.points;
+  const { linePath, areaPath, yFor, gridValues: growthGridValues } = chart;
+  const selectedPoint = chartGrowthPoints.find(point => point.ordinal === selectedGrowthOrdinal)
+    ?? chartGrowthPoints[0]
+    ?? chart.changes.at(-1);
+  const selectedEvent = selectedPoint?.event;
+  const selectedOrdinal = selectedPoint?.ordinal;
 
   const handleChannelChange = (next: ChannelKey): void => {
     setChannel(next);
@@ -366,10 +336,10 @@ const OverviewPage = () => {
     if (nextNode) setSelectedNodeId(nextNode.id);
   };
 
-  const handleGrowthPointKeyDown = (event: React.KeyboardEvent<SVGGElement>, date: string): void => {
+  const handleGrowthPointKeyDown = (event: React.KeyboardEvent<SVGGElement>, ordinal: number): void => {
     if (!['Enter', ' '].includes(event.key)) return;
     event.preventDefault();
-    setSelectedGrowthDate(date);
+    setSelectedGrowthOrdinal(ordinal);
   };
 
   return (
@@ -440,10 +410,10 @@ const OverviewPage = () => {
                 </div>
               )}
             </div>
-            <div className="channel-switch">
+            {user.personnelRole !== 'hr' && <div className="channel-switch">
               <button className={channel === 'tech' ? 'active' : ''} onClick={() => handleChannelChange('tech')}>技术序列</button>
               <button className={channel === 'management' ? 'active' : ''} onClick={() => handleChannelChange('management')}>管理通道</button>
-            </div>
+            </div>}
           </div>
         </div>
         <div className="skill-model-note"><b>技能模型</b><span>一级技能：专业技能 / 通用技能</span><i>→</i><span>二级技能：具体可评估能力</span><i>→</i><span>等级：L1-L5</span></div>
@@ -557,7 +527,7 @@ const OverviewPage = () => {
 
       <section className="panel growth-curve-panel" aria-labelledby="growth-curve-title">
         <div className="growth-curve-head">
-          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>入职后第一次点亮记为第 1 次，后续每新增一个技能逐次 +1；进阶认证不新增点亮</p></div>
+          <div><h3 id="growth-curve-title">技能点亮轨迹</h3><p>从入职首次定级开始，按实际点亮事件依次记录</p></div>
           <div className="growth-curve-summary"><span>当前已点亮 <b>{metrics.certifiedSkillCount}</b> 项</span><span>近6个月 <b>+{recentCertCount}</b></span></div>
           <div className="growth-range" role="tablist" aria-label="选择成长轨迹时间范围">
             {GROWTH_RANGES.map((rangeOption) => (
@@ -572,7 +542,7 @@ const OverviewPage = () => {
         </div>
         <div className="growth-curve-layout">
           <div className="growth-chart-wrap">
-            <svg className="growth-chart" viewBox="0 0 900 300" role="img" aria-label={`${currentEmployee.name}历史累计点亮技能数量变化曲线`}>
+            <svg className="growth-chart" viewBox="0 0 900 300" role="img" aria-label={`${currentEmployee.name}技能点亮序号随时间变化曲线`}>
               <defs>
                 <linearGradient id="growth-area" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0" stopColor="#6558e8" stopOpacity=".25" /><stop offset="1" stopColor="#6558e8" stopOpacity=".02" />
@@ -594,10 +564,10 @@ const OverviewPage = () => {
                 })}
                 <text className="growth-axis-label" x={14} y={20}>点亮序号</text>
               </g>
-              {chartGrowthPoints.length >= 2 && <path fill="url(#growth-area)" d={areaPath}></path>}
+              {areaPath && <path fill="url(#growth-area)" d={areaPath}></path>}
               <path
-                key={`${growthRange}-${effectiveSelectedDate}`}
-                className="is-drawing"
+                key={growthRange}
+                id="growth-line-path" className="is-drawing"
                 fill="none"
                 stroke="#6558e8"
                 strokeWidth={3}
@@ -605,20 +575,20 @@ const OverviewPage = () => {
                 strokeLinejoin="round"
                 d={linePath}
               ></path>
-              {chartGrowthPoints.length === 0 && (
+              {!linePath && (
                 <text className="growth-axis-label" x={(GROWTH_CHART_LEFT + GROWTH_CHART_RIGHT) / 2} y={(GROWTH_CHART_TOP + GROWTH_CHART_BOTTOM) / 2} textAnchor="middle">该时间段内没有新的技能点亮</text>
               )}
               <g>
                 {chartGrowthPoints.map((point) => (
                   <g
-                    key={point.event.date}
-                    className={`growth-point ${point.event.date === effectiveSelectedDate ? 'is-selected' : ''}`}
+                    key={point.ordinal}
+                    className={`growth-point ${point.ordinal === selectedOrdinal ? 'is-selected' : ''}`}
                     tabIndex={0}
                     role="button"
                     aria-label={`第 ${point.ordinal} 次技能点亮，${point.event.date}，${point.event.title}`}
                     transform={`translate(${point.x} ${point.y})`}
-                    onClick={() => setSelectedGrowthDate(point.event.date)}
-                    onKeyDown={(event) => handleGrowthPointKeyDown(event, point.event.date)}
+                    onClick={() => setSelectedGrowthOrdinal(point.ordinal)}
+                    onKeyDown={(event) => handleGrowthPointKeyDown(event, point.ordinal)}
                   >
                     <circle className="point-hit" r={18}></circle>
                     <circle className="point-halo" r={12}></circle>
@@ -628,15 +598,18 @@ const OverviewPage = () => {
                 ))}
               </g>
               <g>
-                {chartGrowthPoints.map((point) => (
-                  <text key={`${point.event.date}-label`} className="growth-axis-label" x={point.x} y={266} textAnchor="middle">{point.event.date}</text>
+                {chart.ticks.map((tick) => (
+                  <text key={tick.label} className="growth-axis-label" x={tick.x} y={266} textAnchor="middle">{tick.label}</text>
                 ))}
               </g>
+              {chart.tail && <text className="growth-tail-label" x={chart.tail.x} y={chart.tail.y} textAnchor="middle">暂无新增点亮</text>}
             </svg>
+            <div className="growth-chart-legend"><i aria-hidden="true" />节点数字与纵轴均表示点亮序号</div>
           </div>
           <aside className="growth-event-detail" aria-live="polite">
             {selectedEvent ? <>
-            <span className="growth-event-date">{selectedEvent.date} · {selectedOrdinal ? `第 ${selectedOrdinal} 次技能点亮 · ` : ''}正式生效</span>
+            <h4 className="growth-event-ordinal">第 {selectedOrdinal} 次点亮</h4>
+            <span className="growth-event-date">{selectedEvent.date} · 正式生效</span>
             <h4>{selectedEvent.title}</h4>
             <p>{selectedEvent.note}</p>
             <dl>

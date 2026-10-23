@@ -107,6 +107,11 @@ export class FactsService implements OnModuleInit, OnModuleDestroy {
           content:{testOnly:true,attribution:'仅用于功能验证，不证明该员工真实完成这些工作',format:material.format,body:material.body,
             source:{path:material.source_path,sha256:material.source_sha256}} });
       }
+      const manualRows = await tx.execute<{id:string;employee_id:string;kind:FactRecord['kind'];title:string;occurred_at:Date;content:Record<string,unknown>}>(sql`
+        SELECT id,employee_id,kind,title,occurred_at,content FROM mvp_manual_fact_source WHERE revoked_at IS NULL`);
+      for (const row of manualRows) sources.push({ employeeId: row.employee_id, sourceTable: 'mvp_manual_fact_source',
+        sourceKey: row.id, kind: row.kind, title: row.title, occurrenceLabel: new Date(row.occurred_at).toISOString(),
+        content: row.content, provenance: 'manager_entered' });
       const previous = await tx.execute<Stored>(sql`SELECT * FROM mvp_fact`);
       const indexed = new Map(previous.map(row => [`${row.source_table}:${row.source_key}`, row]));
       const seen = new Set<string>();
@@ -144,6 +149,33 @@ export class FactsService implements OnModuleInit, OnModuleDestroy {
         ON CONFLICT(adapter) DO UPDATE SET last_checked_at=excluded.last_checked_at,
           last_changed_at=COALESCE(excluded.last_changed_at,mvp_fact_sync.last_changed_at),
           source_count=excluded.source_count,changed_count=excluded.changed_count`);
+      await tx.execute(sql`
+        INSERT INTO mvp_employee_wide
+          (employee_id,employee_slug,name,role,org,status,hire_date,summary,department,job_grade,personnel_role,
+           work_location,preferred_track,is_demo,fact_count,project_count,performance_count,evidence_count,
+           other_fact_count,latest_fact_at,fact_titles,refreshed_at)
+        SELECT e.id,e.slug,e.name,e.role,e.org,e.status,e.hire_date,e.summary,e.department,e.job_grade,
+          e.personnel_role,e.work_location,e.preferred_track,e.is_demo,
+          count(f.id)::int,
+          count(f.id) FILTER (WHERE f.kind='project')::int,
+          count(f.id) FILTER (WHERE f.kind='performance')::int,
+          count(f.id) FILTER (WHERE f.kind='legacy_evidence')::int,
+          count(f.id) FILTER (WHERE f.kind NOT IN ('project','performance','legacy_evidence'))::int,
+          max(f.updated_at),
+          COALESCE(jsonb_agg(f.title ORDER BY f.updated_at DESC, f.id) FILTER (WHERE f.id IS NOT NULL),'[]'::jsonb),
+          clock_timestamp()
+        FROM employee e LEFT JOIN mvp_fact f ON f.employee_id=e.id AND f.status='active'
+        GROUP BY e.id
+        ON CONFLICT (employee_id) DO UPDATE SET
+          employee_slug=excluded.employee_slug,name=excluded.name,role=excluded.role,org=excluded.org,
+          status=excluded.status,hire_date=excluded.hire_date,summary=excluded.summary,
+          department=excluded.department,job_grade=excluded.job_grade,personnel_role=excluded.personnel_role,
+          work_location=excluded.work_location,preferred_track=excluded.preferred_track,is_demo=excluded.is_demo,
+          fact_count=excluded.fact_count,project_count=excluded.project_count,
+          performance_count=excluded.performance_count,evidence_count=excluded.evidence_count,
+          other_fact_count=excluded.other_fact_count,latest_fact_at=excluded.latest_fact_at,
+          fact_titles=excluded.fact_titles,refreshed_at=excluded.refreshed_at`);
+      await tx.execute(sql`DELETE FROM mvp_employee_wide w WHERE NOT EXISTS (SELECT 1 FROM employee e WHERE e.id=w.employee_id)`);
     });
   }
 
@@ -162,7 +194,7 @@ export class FactsService implements OnModuleInit, OnModuleDestroy {
       activeCount: counts.filter(r => r.status === 'active').reduce((n,r) => n+r.count,0),
       deletedCount: counts.filter(r => r.status === 'deleted').reduce((n,r) => n+r.count,0),
       countsByKind: Object.fromEntries(counts.filter(r => r.status === 'active').map(r => [r.kind,r.count])),
-      assessment: process.env.AI_MODE === 'real' && process.env.AI_API_KEY && process.env.AI_MODEL && process.env.AI_BASE_URL ? 'available' : 'not-configured', simulatedSources: [...new Set(counts.filter(r => r.status === 'active')
+      assessment: process.env.ASSESSMENT_MODE !== 'real' || (process.env.AI_MODE === 'real' && process.env.AI_API_KEY && process.env.AI_MODEL && process.env.AI_BASE_URL) ? 'available' : 'not-configured', simulatedSources: [...new Set(counts.filter(r => r.status === 'active')
         .map(r => ({git_commit:'Git代码提交',okr:'OKR',employee_transfer:'员工调动'} as Record<string,string>)[r.kind]).filter(Boolean))],
       unavailableSources: ['真实Git系统','真实OKR系统','真实员工调动系统','外部事实中心'] };
   }
@@ -175,7 +207,7 @@ export class FactsService implements OnModuleInit, OnModuleDestroy {
   async changes(after: string, limit: number, factId?: string) {
     const id = await this.currentId();
     const rows = await this.db.execute<{ cursor: string; operation: FactChange['operation']; snapshot: FactRecord; recorded_at: Date }>(sql`
-      SELECT cursor::text,operation,snapshot,recorded_at FROM mvp_fact_change WHERE employee_id=${id} AND cursor>${after}::bigint
+      SELECT cursor::text AS cursor,operation,snapshot,recorded_at FROM mvp_fact_change WHERE employee_id=${id} AND cursor>${after}::bigint
       ${factId ? sql`AND fact_id=${factId}::uuid` : sql``} ORDER BY cursor LIMIT ${limit+1}`);
     const page = rows.slice(0,limit);
     return { items: page.map(r => ({ cursor: r.cursor, operation: r.operation, fact: r.snapshot, recordedAt: new Date(r.recorded_at).toISOString() })),

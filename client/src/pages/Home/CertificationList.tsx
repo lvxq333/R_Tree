@@ -29,6 +29,7 @@ function levelSummary(item: CertificationItem): string {
 }
 
 function metaNote(item: CertificationItem): string {
+  if (item.historical) return `生效于 ${item.approvedAt}`;
   if (item.status === 'approved') return '人工审批已通过';
   if (isReviewStatus(item.status)) return `复核截止 ${item.deadline}`;
   return `依据可信度 ${item.confidence}%`;
@@ -45,7 +46,7 @@ const CertificationList = ({ items, selectedId, onSelect }: CertificationListPro
 
   return (
     <section className="panel cert-inbox">
-      <div className="section-head"><div><h3>全部技能</h3><p>查看已点亮技能，以及等待申请或审批的技能</p></div></div>
+      <div className="section-head"><div><h3>全部技能</h3><p>当前事项与入职以来有效的历史技能认证</p></div></div>
       <div className="cert-filters" role="tablist" aria-label="按来源筛选">
         {CERT_FILTERS.map((filter) => (
           <button
@@ -58,7 +59,7 @@ const CertificationList = ({ items, selectedId, onSelect }: CertificationListPro
         ))}
       </div>
       <div id="cert-list" className="cert-list">
-        {items.length === 0 && <div className="cert-empty">当前来源下没有待处理记录</div>}
+        {items.length === 0 && <div className="cert-empty">当前筛选下没有技能记录</div>}
         {items.map((item: CertificationItem) => (
           <button
             key={item.id}

@@ -14,21 +14,22 @@ npm install
 npm run db:start
 npm run db:restore
 npm run db:migrate:mvp
+node scripts/seed-employee-directory.mjs
 npm run build
 npm start
 ```
 
-运行 `npm run db:migrate:auth` 后，用 `npm run auth:create-user -- zhangsan` 为当前演示员工创建本地账号；命令会生成一次性密码。已有账号可用 `AUTH_ACCOUNT_PASSWORD` 环境变量指定新密码并运行同一命令。然后访问 http://127.0.0.1:3000 。`db:start` 会创建并启动独立数据库。`db:restore` 只接受空 public schema，不会覆盖已有数据。恢复原始 27 表、346 行；原 UUID 与 slug 保留，旧平台审计身份置空，修正 SQL 导出中二次编码的 JSONB。原始导出保存在 migration/，恢复脚本不修改原文件。平台 RLS 策略维持注释状态，不能用作正式权限实现。
+运行 `npm run db:migrate:auth` 后，用 `npm run auth:create-user -- zhangsan` 为当前演示员工创建本地账号；命令会生成一次性密码。已有账号可用 `AUTH_ACCOUNT_PASSWORD` 环境变量指定新密码并运行同一命令。然后访问 http://127.0.0.1:3001 。`db:start` 会创建并启动独立数据库。`db:restore` 只接受空 public schema，不会覆盖已有数据。恢复原始 27 表、346 行；原 UUID 与 slug 保留，旧平台审计身份置空，修正 SQL 导出中二次编码的 JSONB。原始导出保存在 migration/，恢复脚本不修改原文件。平台 RLS 策略维持注释状态，不能用作正式权限实现。
 
 ## 登录接入
 
-左下角的账户按钮可退出、切换账号，并在配置飞书后绑定飞书身份。飞书开放平台自建应用需在安全设置中登记 `FEISHU_REDIRECT_URI`，然后在 `.env` 填写 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_REDIRECT_URI`；开发服务器使用 5173 端口时还需设置 `AUTH_APP_URL=http://127.0.0.1:5173/`。先用本地账号登录并绑定飞书，之后才可用飞书直接登录。飞书用户的 `open_id` 与租户标识映射到本地账号；不通过姓名或邮箱自动关联。公司 SSO 协议尚未确定，入口会显示待接入。员工身份由服务端会话确定，工作台、技能、成长、发展计划、事实及评估材料按员工归属读取。新账号默认是员工角色，只能读取自己的个人数据；管理者账号可访问组织工作台。飞书消息、审批及权限同步尚未接入。
+左下角的账户按钮可退出、切换账号，并在配置飞书后绑定飞书身份。飞书开放平台自建应用需在安全设置中登记 `FEISHU_REDIRECT_URI`，然后在 `.env` 填写 `FEISHU_APP_ID`、`FEISHU_APP_SECRET`、`FEISHU_REDIRECT_URI`；开发服务器使用 5173 端口时还需设置 `AUTH_APP_URL=http://127.0.0.1:5173/`。先用本地账号登录并绑定飞书，之后才可用飞书直接登录。飞书用户的 `open_id` 与租户标识映射到本地账号；不通过姓名或邮箱自动关联。公司 SSO 协议尚未确定，入口会显示待接入。员工身份由服务端会话确定。HR 可维护全员；T4 专家仅可查看本部门或指派复核员工；T1–T3 仅使用员工工作台。演示数据通过 `is_demo` 标记；能力材料评估默认使用明确标记的 mock 结果。
 
 ## 员工账号与注册
 
 新员工可在登录页点击“新员工？注册账号”，填写姓名、账号、密码以及可选的部门、岗位、入职日期。注册在同一个事务中创建 `employee` 员工档案、`app_account` 账号、`mvp_fact_employee` 事实中心基本信息登记和会话；不会生成项目、绩效、技能、成长轨迹、IDP 或模拟工作事实。姓名允许重名，不通过姓名自动关联已有档案。重复账号会回滚整个事务。
 
-已有员工使用已关联的账号登录，不会重复创建员工。尚未开通账号的已有员工，由本机维护者执行 `npm run auth:create-user -- <用户名> <已有员工slug>`；如需管理者权限，可显式追加 `--manager`。该命令只绑定已有档案；对已有账号执行会更新密码。已有张三账号继续使用原密码。`is_current_user` 仅保留旧数据兼容，不再决定请求的数据归属。
+已有员工使用已关联的账号登录，不会重复创建员工。尚未开通账号的已有员工，由本机维护者执行 `npm run auth:create-user -- <用户名> <已有员工slug>`。工作台权限由员工主数据的 HR 身份与 T4 职级决定，账号上的旧 `access_role` 标记不再授予管理权限。该命令只绑定已有档案；对已有账号执行会更新密码。`is_current_user` 仅保留旧数据兼容，不再决定请求的数据归属。
 
 执行 `npm run db:migrate:auth` 可重放账号及员工登记迁移。`npm run test:auth` 会在独立 schema 验证注册事务、初始空数据、多账号并发与越权拦截，结束后清理测试数据。
 
@@ -52,6 +53,14 @@ npm run dev
 打开 http://127.0.0.1:5173 。前端热更新；修改后端后重启 `npm run dev`。已有数据库不要重复执行恢复命令。
 
 `npm run typecheck` 检查类型；`npm run build` 检查并构建；`npm run db:check` 核对数据库。`Ctrl+C` 停止应用，`npm run db:stop` 停止本项目数据库并保留数据。也保留了 Docker 方案：引擎可用时可用 `npm run db:start:docker` 启动相同端口的数据库；两种方案不能同时使用该端口。
+
+## 个人发展计划
+
+首次进入“个人发展计划”，选择目标职称、开始月份和周期（默认 24 个月），生成四阶段草案后确认保存。内容来自当前员工的有效职称、目标要求、Gap 与已配置资源，采用规则生成，不发送模型请求。重新生成时先比较变更，保留已开始和已完成行动；确认前不覆盖正式计划。
+
+行动可调整名称、时间、进度与成果说明，关联本人证据或登记成果链接。完成行动不会更改技能认证或职称。管理者对齐功能保存实际沟通记录。复制、下载文本及打印 / 导出 PDF 均使用当前显示的计划；历史版本可只读查看。
+
+运行 `npm run db:migrate:mvp` 应用 `012-idp-workspace.sql`，在原 `idp_plan` 上增量增加计划文档与版本，新增草案和历史表，保留原有数据。`npm run test:idp` 在独立 schema 验证计划生成、保存、进度、证据权限、版本冲突和历史，结束后清理测试数据。
 
 ## 迁移范围
 

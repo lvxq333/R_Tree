@@ -84,7 +84,7 @@ export class JudgingService {
     return {
       employeeSlug: user.employeeSlug,
       currentTitle: this.currentTitle(ctx),
-      preferredTrack: this.preferredTrack(user.org, user.position),
+      preferredTrack: await this.preferredTrackForEmployee(),
       tracks: [...tracks.values()],
     };
   }
@@ -115,8 +115,9 @@ export class JudgingService {
   /** 两类候选：已达标可申请、差一项即可申请。已忽略且在冷却期的不返回 */
   async getCandidates(includeDismissed = false): Promise<JudgingCandidatesResponse> {
     const user = currentEmployee();
+    if (user.personnelRole === 'hr') return { items: [] }; // HR 不进入技术职称候选流程。
     const ctx = await this.load(user.employeeSlug);
-    const preferred = this.preferredTrack(user.org, user.position);
+    const preferred = await this.preferredTrackForEmployee();
     // 三条序列的 T1 要求完全相同（都是通用四项），不去重会同时推三条同名候选。
     // 按「技能:等级」签名合并，优先保留员工所属序列的那一条。
     const bySignature = new Map<string, JudgingCandidate>();
@@ -328,7 +329,17 @@ export class JudgingService {
   /** 当前员工的偏好序列（供概览等模块复用同一口径）。 */
   preferredTrackForCurrentEmployee(): string | null {
     const user = currentEmployee();
+    if (user.personnelRole === 'hr') return null;
     return this.preferredTrack(user.org, user.position);
+  }
+
+  private async preferredTrackForEmployee(): Promise<string | null> {
+    const user = currentEmployee();
+    if (user.personnelRole === 'hr') return null;
+    const [row] = await this.db.execute<{ preferred_track: string | null }>(sql`
+      SELECT preferred_track FROM employee WHERE slug=${user.employeeSlug}`);
+    return row && TECH_TRACKS.includes(row.preferred_track ?? '')
+      ? row.preferred_track : this.preferredTrack(user.org, user.position);
   }
 
   /**

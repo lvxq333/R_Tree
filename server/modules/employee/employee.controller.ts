@@ -18,6 +18,11 @@ export class EmployeeController {
     return this.employeeService.listEmployees();
   }
 
+  @Get('colleagues')
+  async listColleagues(): Promise<EmployeeListItem[]> {
+    return this.employeeService.listColleagues();
+  }
+
   @Get('current/workspace')
   @NeedLogin()
   async getCurrentWorkspace(): Promise<EmployeeWorkspaceResponse> {

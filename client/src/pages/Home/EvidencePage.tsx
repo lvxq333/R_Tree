@@ -11,6 +11,14 @@ import SelfApplicationDrawer from './SelfApplicationDrawer';
 const EvidencePage = () => {
   const [history, setHistory] = useState<SkillGrowthEvent[]>([]);
   const [historyError, setHistoryError] = useState(false);
+  const recentHistory = useMemo(() => [...history].sort((a, b) => {
+    const time = (row: SkillGrowthEvent) => {
+      if (row.occurredAt) return new Date(row.occurredAt).getTime() || 0;
+      const [year, month = 1, day = 1] = row.date.split(/[.\-/]/).map(Number);
+      return new Date(year, month - 1, day).getTime() || 0;
+    };
+    return time(b) - time(a);
+  }), [history]);
   useEffect(() => {
     let active = true;
     growthApi.getGrowthEvents('all').then(result => { if (active) setHistory(result.events); }).catch(() => { if (active) setHistoryError(true); });
@@ -45,7 +53,8 @@ const EvidencePage = () => {
     const review = certifications.filter((item: CertificationItem) =>
       item.status === 'review' || item.status === 'review_submitted').length;
     const returned = certifications.filter((item: CertificationItem) => item.status === 'returned').length;
-    const approved = certifications.filter((item: CertificationItem) => item.status === 'approved').length;
+    const approved = new Set(certifications.filter((item: CertificationItem) => item.status === 'approved')
+      .map((item: CertificationItem) => item.skillSlug ?? item.title)).size;
     return { ready, pending, review, returned, approved };
   }, [certifications]);
 
@@ -101,7 +110,7 @@ const EvidencePage = () => {
         <article><span>审批中</span><strong id="pending-count">{counts.pending}</strong><small>管理者或 HR 正在处理</small></article>
         <article className="review-summary"><span>待复核</span><strong id="review-count">{counts.review}</strong><small>当前等级仍然有效</small></article>
         <article><span>待补充</span><strong id="returned-count">{counts.returned}</strong><small>补齐证据后可再次提交</small></article>
-        <article><span>近 90 天已点亮</span><strong id="approved-count">{counts.approved}</strong><small>全部保留审核记录</small></article>
+        <article><span>已点亮技能</span><strong id="approved-count">{counts.approved}</strong><small>含入职以来有效历史认证</small></article>
       </div>
 
       <div className="certification-layout" ref={layoutRef}>
@@ -117,7 +126,7 @@ const EvidencePage = () => {
         <div className="section-head"><div><h3>最近等级变更</h3><p>点亮、升级、维持与降级均保留完整记录</p></div><button className="ghost">查看全部记录</button></div>
         <div className="history-row history-head"><span>技能</span><span>等级变化</span><span>主要依据</span><span>审批人</span><span>生效时间</span></div>
         {historyError ? <p>等级变更记录加载失败，请刷新重试。</p> : !history.length && <p>暂无等级变更记录。</p>}
-        {history.map((row, index) => (
+        {recentHistory.map((row, index) => (
           <div className="history-row" key={`${row.title}-${row.date}-${index}`}>
             <span><b>{row.title}</b><small>{row.category}</small></span>
             <span className={undefined}>{row.level}</span>

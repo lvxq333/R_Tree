@@ -3,7 +3,7 @@ import { BadGatewayException, Injectable, ServiceUnavailableException } from '@n
 @Injectable()
 export class DeepSeekService {
   configuration() {
-    if (process.env.AI_MODE !== 'real') throw new ServiceUnavailableException('请配置 AI_MODE=real；本功能不使用模拟评估结果');
+    if (process.env.ASSESSMENT_MODE !== 'real') return { model:'mock-assessment-v1', key:null, url:null };
     const { AI_API_KEY:key, AI_BASE_URL:base, AI_MODEL:model } = process.env;
     if (!key || !base || !model) throw new ServiceUnavailableException('服务端模型配置不完整');
     let url: URL;
@@ -16,6 +16,13 @@ export class DeepSeekService {
   }
   async complete(system: string, input: unknown): Promise<unknown> {
     const { key, url, model } = this.configuration();
+    if (model === 'mock-assessment-v1') {
+      const request=input as {standard?:{abilities?:{id:string}[]}};
+      return { abilities:(request.standard?.abilities ?? []).map(ability=>({ abilityId:ability.id,
+        supportedLevel:null,reason:'模拟评估：尚未调用真实模型，不能依据此结果认定能力等级。',
+        citations:[],gaps:['等待真实模型评估与人工复核'],questions:['请补充可核验的工作材料和实际成果。'] })) };
+    }
+    if (!key || !url) throw new ServiceUnavailableException('模型配置不完整');
     try {
       const response = await fetch(url, {
         method:'POST', redirect:'error', signal:AbortSignal.timeout(90_000),

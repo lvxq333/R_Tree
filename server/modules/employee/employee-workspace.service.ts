@@ -1,6 +1,6 @@
 import { currentEmployee } from '../auth/employee-context';
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
 import { employee, skillEvent } from '@server/database/schema';
 import { mvpEmployeeSkill } from '@server/database/mvp-schema';
@@ -88,6 +88,8 @@ export class EmployeeWorkspaceService {
     const current = await this.db.select().from(employee).where(eq(employee.id, currentEmployee().employeeId)).limit(1);
     if (!current.length) throw new NotFoundException('当前员工不存在');
     const row = current[0];
+    const [directory]=await this.db.execute<{department:string|null;job_grade:string|null;work_location:string|null}>(sql`
+      SELECT department,job_grade,work_location FROM employee WHERE id=${row.id}`);
     const [certRows, events] = await Promise.all([
       this.db.select().from(mvpEmployeeSkill).where(eq(mvpEmployeeSkill.employeeSlug, row.slug)),
       this.db.select().from(skillEvent).where(eq(skillEvent.employeeSlug, row.slug)),
@@ -119,12 +121,12 @@ export class EmployeeWorkspaceService {
       employee: {
         id: row.id, slug: row.slug, name: row.name,
         avatar: row.avatarText || row.name.slice(0, 1),
-        role: row.role ?? '', org: row.org ?? '', summary: row.summary ?? '',
+        role: row.role ?? '', org: directory?.department ?? row.org ?? '', summary: row.summary ?? '',
         hireDate: row.hireDate,
         tenureMonths: tenureInMonths(row.hireDate, now),
         company: null,
-        jobGrade: row.role?.match(/\bT\d+(?:-\d+)?\b/)?.[0] ?? null,
-        workLocation: null,
+        jobGrade: directory?.job_grade ?? null,
+        workLocation: directory?.work_location ?? null,
       },
       metrics: summarizeWorkspace(skills, events, now),
       databaseUpdatedAt: new Date(timestamps.length ? Math.max(...timestamps) : now.getTime()).toISOString(),

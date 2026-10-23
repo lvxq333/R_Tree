@@ -115,8 +115,28 @@ export class AssessmentService implements OnModuleInit, OnModuleDestroy {
       WHERE e.id=${actor ?? currentEmployee().employeeId}::uuid AND s.slug=${slug}`);
     if (rows.length!==1) throw new NotFoundException('技能记录不存在或不属于当前员工');
     if (actor && rows[0].employee_id!==actor) throw new ForbiddenException('当前登录员工无权查看此评估');
-    const standard=ASSESSMENT_STANDARDS.find(s=>s.skillSlug===rows[0].skill_slug || (!rows[0].skill_slug && s.name===rows[0].title));
-    if (!standard) throw new NotFoundException('此技能尚未纳入首批子能力评估');
+    const [catalog]=await this.db.execute<{slug:string;name:string}>(sql`SELECT slug,name FROM skill
+      WHERE slug=${rows[0].skill_slug} OR ( ${rows[0].skill_slug}::text IS NULL AND name=${rows[0].title}) LIMIT 1`);
+    if (!catalog) throw new NotFoundException('此技能不在技能目录中');
+    const [version]=await this.db.execute<{slug:string}>(sql`SELECT slug FROM mvp_standard_version
+      WHERE status='published' AND effective_at<=now() ORDER BY effective_at DESC LIMIT 1`);
+    if (!version) throw new NotFoundException('当前没有已生效的技能标准');
+    const mapped=await this.db.execute<{slug:string;name:string;level:number;anchor:string}>(sql`
+      SELECT DISTINCT c.slug,c.name,cl.level,cl.anchor FROM mvp_skill_competency sc
+      JOIN mvp_competency c ON c.slug=sc.competency_slug
+      JOIN mvp_competency_level cl ON cl.competency_slug=c.slug
+      WHERE sc.skill_slug=${catalog.slug} AND sc.standard_version_slug=${version.slug}
+      ORDER BY c.slug,cl.level`);
+    const ids=[...new Set(mapped.map(row=>row.slug))];
+    const abilities=ids.length ? ids.map(id=>({id,name:mapped.find(row=>row.slug===id)!.name,
+      anchors:Array.from({length:5},(_,index)=>mapped.find(row=>row.slug===id&&row.level===index+1)?.anchor??'该等级暂未配置行为锚点')}))
+      : [{id:catalog.slug,name:catalog.name,anchors:[]}];
+    if (!ids.length) {
+      const anchors=await this.db.execute<{level:number;anchor:string|null}>(sql`SELECT level,anchor FROM skill_level_anchor WHERE skill_slug=${catalog.slug}`);
+      abilities[0].anchors=Array.from({length:5},(_,index)=>anchors.find(row=>row.level===index+1)?.anchor??'该等级暂未配置行为锚点');
+    }
+    const definition={skillSlug:catalog.slug,name:catalog.name,version:version.slug,abilities};
+    const standard:SkillAssessmentStandard={...definition,hash:createHash('sha256').update(JSON.stringify(definition)).digest('hex')};
     return {employeeId:rows[0].employee_id,standard};
   }
   private async availableFacts():Promise<FactRecord[]> {
@@ -130,7 +150,7 @@ export class AssessmentService implements OnModuleInit, OnModuleDestroy {
     const facts=await this.availableFacts();
     const latest=await this.latestRow(employeeId,slug);
     return {standard,materials:facts.filter(eligibleFact).map(f=>({id:f.id,version:f.version,title:String(cleanMaterial(f.title)),kind:f.kind,
-      detail:readableMaterial(cleanMaterial(f.content)),recommended:f.content.relatedSkillSlug===standard.skillSlug ||
+      detail:readableMaterial(cleanMaterial(f.content)),simulated:f.provenance==='simulated',recommended:f.content.relatedSkillSlug===standard.skillSlug ||
         (Array.isArray(f.content.relatedSkillSlugs) && f.content.relatedSkillSlugs.includes(standard.skillSlug))})),
       latest:latest?this.present(latest,standard,facts):null};
   }
@@ -141,7 +161,7 @@ export class AssessmentService implements OnModuleInit, OnModuleDestroy {
   }
   private present(row:Row,standard:SkillAssessmentStandard,facts:FactRecord[]):SkillAssessment {
     const old=row.input_snapshot;
-    return {id:row.id,status:row.status,targetLevel:row.target_level,standardVersion:old.standard.version,
+    return {id:row.id,simulated:row.model.startsWith('mock-'),status:row.status,targetLevel:row.target_level,standardVersion:old.standard.version,
       factIds:old.facts.map(f=>f.id),selfMaterial:old.selfMaterial,result:row.result,error:row.error,
       stale:row.standard_hash!==standard.hash || old.facts.some(f=>!facts.some(now=>now.id===f.id && now.version===f.version && eligibleFact(now))),
       createdAt:new Date(row.created_at).toISOString()};
@@ -160,6 +180,12 @@ export class AssessmentService implements OnModuleInit, OnModuleDestroy {
   }
   async create(slug:string,input:CreateAssessmentInput,actor?:string):Promise<SkillAssessment> {
     const {employeeId,standard}=await this.context(slug,actor);
+    await this.db.execute(sql`INSERT INTO mvp_assessment_standard(hash,skill_slug,version,definition)
+      VALUES(${standard.hash},${standard.skillSlug},${standard.version},${JSON.stringify(standard)}::jsonb)
+      ON CONFLICT (skill_slug,version) DO NOTHING`);
+    const [saved]=await this.db.execute<{hash:string}>(sql`SELECT hash FROM mvp_assessment_standard
+      WHERE skill_slug=${standard.skillSlug} AND version=${standard.version}`);
+    if (saved?.hash!==standard.hash) throw new ConflictException('已发布标准内容发生变化，请发布新版本后重试');
     if (!input || !Number.isInteger(input.targetLevel) || input.targetLevel<1 || input.targetLevel>5 || !Array.isArray(input.factIds)
       || input.factIds.length>12 || !input.factIds.every(id=>typeof id==='string') || new Set(input.factIds).size!==input.factIds.length
       || typeof input.selfMaterial!=='string' || input.selfMaterial.length>8000) throw new BadRequestException('请选择 L1~L5、最多12条事实，自证资料不超过8000字');
