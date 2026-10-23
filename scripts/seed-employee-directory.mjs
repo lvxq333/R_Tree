@@ -12,7 +12,8 @@ const groups=[
 const family=['陈','林','周','黄','吴','李','王','赵','孙','郑','许','何','朱','高','马','胡','郭','刘','张','杨'];
 const given=['晨','宁','嘉','宇','安','彤','涵','远','思','悦','明','博','欣','航','琳','文','琪','浩','敏','轩'];
 const gradeFor=n=>n<6?'T1':n<13?'T2':n<20?'T3':'T4';
-const password=process.env.DEMO_ACCOUNT_PASSWORD || `Demo-${randomBytes(15).toString('base64url')}`;
+// 本地演示环境统一口令，避免每次重跑生成不可预期的随机密码
+const password=process.env.DEMO_ACCOUNT_PASSWORD || '123456';
 const salt=randomBytes(16).toString('hex');
 const passwordHash=`scrypt:${salt}:${scryptSync(password,salt,64).toString('hex')}`;
 const records=[];

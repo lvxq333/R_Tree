@@ -15,7 +15,7 @@ import { randomUUID } from 'node:crypto';
 
 const BASE = process.env.JUDGING_BASE_URL || `http://127.0.0.1:${process.env.SERVER_PORT || 3000}`;
 const USERNAME = 'zhang-wei';
-const PASSWORD = process.env.JUDGING_PASSWORD || 'SkillTree@2026';
+const PASSWORD = process.env.JUDGING_PASSWORD || '123456';
 
 let failures = 0;
 function check(label, actual, expected) {

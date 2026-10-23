@@ -17,10 +17,11 @@ import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 
 const scrypt = promisify(scryptCallback);
-const password = process.env.AUTH_ACCOUNT_PASSWORD || 'SkillTree@2026';
+// 本地演示环境统一口令（与 seed-employee-directory.mjs 的 DEMO_ACCOUNT_PASSWORD 默认值保持一致）
+const password = process.env.AUTH_ACCOUNT_PASSWORD || '123456';
 
-if (password.length < 12) {
-  console.error('密码需至少 12 位');
+if (password.length < 6) {
+  console.error('密码需至少 6 位');
   process.exit(1);
 }
 

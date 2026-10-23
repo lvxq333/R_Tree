@@ -135,10 +135,10 @@ const ORG_RELATIONS = [
 ];
 
 // ============================================================
-// 3. 账号密码定义（统一密码：SkillTree@2026）
+// 3. 账号密码定义（本地演示统一密码：123456）
 // ============================================================
 
-const DEFAULT_PASSWORD = 'SkillTree@2026';
+const DEFAULT_PASSWORD = process.env.DEMO_ACCOUNT_PASSWORD || '123456';
 
 function hashPassword(password) {
   // salt 必须是 16 字节随机值的 hex（32 位小写 hex），与 auth.service 的校验 `/^[a-f0-9]{32}$/` 一致。
@@ -231,7 +231,7 @@ VALUES ('${id}', '${emp.slug}', '${emp.name}', '${emp.name[0]}', 'blue', '${emp.
   statements.push('');
 
   // 插入账号
-  statements.push('-- 插入账号（统一密码：SkillTree@2026）');
+  statements.push('-- 插入账号（本地演示统一密码：123456）');
   for (const acc of ACCOUNTS) {
     statements.push(`INSERT INTO app_account(employee_id, username, password_hash, access_role, enabled, created_at)
 SELECT id, '${acc.username}', '${acc.passwordHash}', '${acc.accessRole}', true, now()
@@ -332,7 +332,7 @@ experts.forEach(exp => {
 });
 console.log('');
 console.log('-- 测试账号示例：');
-console.log('--   张伟（Java 高级工程师）: zhang-wei / SkillTree@2026');
-console.log('--   李娜（Java 技术专家）: li-na / SkillTree@2026');
-console.log('--   刘洋（前端高级工程师）: liu-yang / SkillTree@2026');
-console.log('--   陈静（前端技术专家）: chen-jing / SkillTree@2026');
+console.log('--   张伟（Java 高级工程师）: zhang-wei / 123456');
+console.log('--   李娜（Java 技术专家）: li-na / 123456');
+console.log('--   刘洋（前端高级工程师）: liu-yang / 123456');
+console.log('--   陈静（前端技术专家）: chen-jing / 123456');
