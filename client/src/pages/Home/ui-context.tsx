@@ -8,6 +8,7 @@ export const PAGE_TITLE_MAP: Record<PageId, [string, string, string]> = {
   judging: ['资格自查', '对照职称标准查看 4 项要求达标情况与 Gap', '提交申请'],
   idp: ['个人职业发展计划', '基于个人情况与 Gap 生成的 24 个月职业生涯规划', '导出 IDP'],
   colleagues: ['我的同事', '查看同部门同事的基础信息', '搜索同事'],
+  positions: ['岗位管理', '维护岗位序列、方向与职级技能要求', '导入岗位标准'],
   manager: ['团队概览', '按权限查看技能供需、风险与成员发展', '导出盘点摘要'],
   approval: ['认证与复核', '核对证据与等级锚点，处理技能升级、维持与降级', '批量处理'],
   talent: ['人才搜索', '从项目需要出发，找到有依据、可协调的候选人', '保存人才需求'],
@@ -17,13 +18,13 @@ export const PAGE_TITLE_MAP: Record<PageId, [string, string, string]> = {
   factCenter: ['事实中心', '管理员工信息、查看事实记录与员工汇总宽表', '刷新汇总'],
 };
 
-export const MANAGER_PAGES: PageId[] = ['manager', 'approval', 'talent', 'succession', 'team', 'profile', 'factCenter'];
+export const MANAGER_PAGES: PageId[] = ['manager', 'positions', 'approval', 'talent', 'succession', 'team', 'profile', 'factCenter'];
 
 export function isManagerSurface(page: PageId): boolean {
   return MANAGER_PAGES.includes(page);
 }
 function canOpenManagerPage(page:PageId,personnelRole:'employee'|'hr'|'expert') {
-  return !isManagerSurface(page) || personnelRole==='hr' || (personnelRole==='expert' && ['manager','approval','talent','factCenter'].includes(page));
+  return !isManagerSurface(page) || personnelRole==='hr' || (personnelRole==='expert' && ['manager','positions','approval','talent','team','factCenter'].includes(page));
 }
 
 interface UIContextValue {

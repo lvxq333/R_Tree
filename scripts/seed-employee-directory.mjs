@@ -189,7 +189,29 @@ try {
         restaggered++;
       }
     }
-    console.log(`已为演示员工补充 ${addedSkills} 条岗位技能；铺开 ${restaggered} 条认证日期（张伟保持手工模板）`);
+    // 演示复核节奏：slug 序号 %25==3 的员工最高等级技能设为近 30 天复核过期（管理侧热力图出现 -N），
+    // %25==8 的员工设为未来 30 天内到期（触发「即将到复核日」风险卡）。确定性谓词，重跑幂等。
+    const overdue=await tx`
+      WITH picked AS (
+        SELECT DISTINCT ON (s.employee_slug) s.id, s.employee_slug
+        FROM mvp_employee_skill s JOIN employee e ON e.slug=s.employee_slug
+        WHERE s.status='active' AND s.review_due_at IS NULL AND e.status='active'
+          AND e.slug ~ '[0-9]+$' AND (substring(e.slug from '[0-9]+$'))::int % 25 = 3
+        ORDER BY s.employee_slug, s.level DESC, s.skill_slug)
+      UPDATE mvp_employee_skill s
+      SET review_due_at = now() - ((5 + (substring(p.employee_slug from '[0-9]+$'))::int % 15) || ' days')::interval, updated_at=now()
+      FROM picked p WHERE s.id=p.id RETURNING s.id`;
+    const dueSoon=await tx`
+      WITH picked AS (
+        SELECT DISTINCT ON (s.employee_slug) s.id, s.employee_slug
+        FROM mvp_employee_skill s JOIN employee e ON e.slug=s.employee_slug
+        WHERE s.status='active' AND s.review_due_at IS NULL AND e.status='active'
+          AND e.slug ~ '[0-9]+$' AND (substring(e.slug from '[0-9]+$'))::int % 25 = 8
+        ORDER BY s.employee_slug, s.level DESC, s.skill_slug)
+      UPDATE mvp_employee_skill s
+      SET review_due_at = now() + ((5 + (substring(p.employee_slug from '[0-9]+$'))::int % 20) || ' days')::interval, updated_at=now()
+      FROM picked p WHERE s.id=p.id RETURNING s.id`;
+    console.log(`已为演示员工补充 ${addedSkills} 条岗位技能；铺开 ${restaggered} 条认证日期（张伟保持手工模板）；${overdue.length} 条复核过期、${dueSoon.length} 条 30 天内到期`);
   });
   const [counts]=await db`SELECT count(*)::int total,count(*) FILTER(WHERE is_demo)::int demo FROM employee`;
   console.log(`员工总数 ${counts.total}，演示员工 ${counts.demo}`);

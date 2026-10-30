@@ -1,6 +1,7 @@
 import { Global, Module, Injectable, Inject, OnApplicationShutdown, CanActivate, ExecutionContext, ForbiddenException, UseGuards } from '@nestjs/common';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
+import { assertTrustedOrigin } from './trusted-origin';
 export type { PostgresJsDatabase } from 'drizzle-orm/postgres-js';
 export const DRIZZLE_DATABASE = Symbol('DRIZZLE_DATABASE');
 const SQL_CLIENT = Symbol('SQL_CLIENT');
@@ -8,11 +9,7 @@ const SQL_CLIENT = Symbol('SQL_CLIENT');
 class LocalDemoGuard implements CanActivate {
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest();
-    const host = request.headers.host?.split(':')[0];
-    const origin = request.headers.origin;
-    if (process.env.LOCAL_DEMO !== 'true' || !['localhost', '127.0.0.1'].includes(host)) throw new ForbiddenException('仅允许本机演示访问');
-    const allowedPorts = ['5173', String(Number(process.env.SERVER_PORT || 3000))];
-    if (origin && !allowedPorts.some(port => origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`)) throw new ForbiddenException('不允许的来源');
+    assertTrustedOrigin(request);
     return true;
   }
 }

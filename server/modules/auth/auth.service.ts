@@ -9,8 +9,9 @@ import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/loca
 const scrypt = promisify(scryptCallback);
 const hashToken = (value: string) => createHash('sha256').update(value).digest('hex');
 const randomToken = () => randomBytes(32).toString('base64url');
-export const SESSION_COOKIE = validationEnabled() ? 'skilltree_validation_session' : 'skilltree_session';
-export const OAUTH_COOKIE = 'skilltree_oauth_state';
+export const SESSION_COOKIE = validationEnabled() ? 'skilltree_validation_session'
+  : process.env.DEPLOYMENT_MODE === 'server' ? 'skilltree_server_session' : 'skilltree_session';
+export const OAUTH_COOKIE = process.env.DEPLOYMENT_MODE === 'server' ? 'skilltree_server_oauth_state' : 'skilltree_oauth_state';
 
 export type { AuthUser } from '@shared/api.interface';
 type AccountRow = { id: string; employee_id: string; username: string; password_hash: string; name: string; enabled: boolean };
@@ -119,7 +120,11 @@ export class AuthService {
   }
 
   feishuConfigured(): boolean {
-    return !validationEnabled() && Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET && process.env.FEISHU_REDIRECT_URI);
+    return !validationEnabled() && (this.bridgeConfigured() || Boolean(process.env.FEISHU_APP_ID && process.env.FEISHU_APP_SECRET && process.env.FEISHU_REDIRECT_URI));
+  }
+
+  private bridgeConfigured(): boolean {
+    return Boolean(process.env.FEISHU_BRIDGE_URL && process.env.FEISHU_BRIDGE_PUBLIC_URL && process.env.FEISHU_BRIDGE_TOKEN && process.env.FEISHU_APP_ID && process.env.FEISHU_TENANT_KEY);
   }
 
   async startFeishu(linkAccountId: string | null): Promise<{ url: string; state: string }> {
@@ -128,6 +133,12 @@ export class AuthService {
     const state = randomToken();
     await this.db.execute(sql`INSERT INTO app_oauth_flow(state_hash,provider,link_account_id,expires_at)
       VALUES(${hashToken(state)},'feishu',${linkAccountId}::uuid,now()+interval '5 minutes')`);
+    if (this.bridgeConfigured()) {
+      const url = new URL('/auth/feishu/start', process.env.FEISHU_BRIDGE_PUBLIC_URL!);
+      url.searchParams.set('client_id', 'skilltree');
+      url.searchParams.set('client_state', state);
+      return { url: url.toString(), state };
+    }
     const url = new URL('https://accounts.feishu.cn/open-apis/authen/v1/authorize');
     url.searchParams.set('client_id', process.env.FEISHU_APP_ID!);
     url.searchParams.set('response_type', 'code');
@@ -136,25 +147,40 @@ export class AuthService {
     return { url: url.toString(), state };
   }
 
-  async finishFeishu(code: string, state: string, browserState: string | undefined): Promise<{ token: string; linked: boolean }> {
+  async finishFeishu(code: string, state: string, browserState: string | undefined, currentAccountId?: string): Promise<{ token: string; linked: boolean }> {
     if (!code || !state || !browserState || state !== browserState) throw new BadRequestException('飞书登录状态无效');
     const [flow] = await this.db.execute<{ link_account_id: string | null }>(sql`
       DELETE FROM app_oauth_flow WHERE state_hash=${hashToken(state)} AND provider='feishu' AND expires_at>now()
       RETURNING link_account_id`);
     if (!flow) throw new BadRequestException('飞书登录已过期，请重新操作');
+    if (flow.link_account_id && flow.link_account_id !== currentAccountId) throw new UnauthorizedException('绑定期间账号发生变化，请重新登录后绑定');
     if (!this.feishuConfigured()) throw new ServiceUnavailableException('飞书应用尚未配置');
+    let profile: { code?: number; data?: { open_id?: string; user_id?: string; tenant_key?: string; app_id?: string } };
+    if (this.bridgeConfigured()) {
+      const response = await fetch(new URL('/v1/auth/exchange', process.env.FEISHU_BRIDGE_URL!), {
+        method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.FEISHU_BRIDGE_TOKEN}` },
+        body: JSON.stringify({ ticket: code }), signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new UnauthorizedException('飞书登录凭证无效或已过期');
+      const identity = await response.json() as NonNullable<typeof profile['data']>;
+      if (identity.app_id !== process.env.FEISHU_APP_ID || identity.tenant_key !== process.env.FEISHU_TENANT_KEY) throw new UnauthorizedException('飞书企业或应用身份不匹配');
+      profile = { code: 0, data: identity };
+    } else {
     const tokenResponse = await fetch('https://open.feishu.cn/open-apis/authen/v2/oauth/token', {
       method: 'POST', headers: { 'Content-Type': 'application/json; charset=utf-8' },
       body: JSON.stringify({ grant_type: 'authorization_code', client_id: process.env.FEISHU_APP_ID,
         client_secret: process.env.FEISHU_APP_SECRET, code, redirect_uri: process.env.FEISHU_REDIRECT_URI }),
     });
     const tokenData = await tokenResponse.json() as { code?: number; access_token?: string };
-    if (!tokenResponse.ok || tokenData.code !== 0 || !tokenData.access_token) throw new UnauthorizedException('飞书授权失败');
+    if (!tokenResponse.ok || (tokenData.code ?? 0) !== 0 || !tokenData.access_token) throw new UnauthorizedException('飞书授权失败');
     const profileResponse = await fetch('https://open.feishu.cn/open-apis/authen/v1/user_info', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-    const profile = await profileResponse.json() as { code?: number; data?: { open_id?: string; user_id?: string; tenant_key?: string } };
+    profile = await profileResponse.json() as typeof profile;
     if (!profileResponse.ok || profile.code !== 0 || !profile.data?.open_id) throw new UnauthorizedException('无法获取飞书用户身份');
+    if (process.env.FEISHU_TENANT_KEY && profile.data.tenant_key !== process.env.FEISHU_TENANT_KEY) throw new UnauthorizedException('用户不属于指定企业');
+    }
+    if (!profile.data?.open_id || !profile.data.tenant_key) throw new UnauthorizedException('飞书身份信息不完整');
     // open_id 按应用隔离；如有 tenant_key 一并保存，供后续消息和审批集成使用。
     const subject = `${process.env.FEISHU_APP_ID}:${profile.data.tenant_key ?? 'unknown'}:${profile.data.open_id}`;
     const [identity] = await this.db.execute<IdentityRow & Record<string, unknown>>(sql`

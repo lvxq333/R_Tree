@@ -2,8 +2,8 @@ import { BadGatewayException, Injectable, ServiceUnavailableException } from '@n
 
 @Injectable()
 export class DeepSeekService {
-  configuration() {
-    if (process.env.ASSESSMENT_MODE !== 'real') return { model:'mock-assessment-v1', key:null, url:null };
+  configuration(requireReal = false) {
+    if (!requireReal && process.env.ASSESSMENT_MODE !== 'real') return { model:'mock-assessment-v1', key:null, url:null };
     const { AI_API_KEY:key, AI_BASE_URL:base, AI_MODEL:model } = process.env;
     if (!key || !base || !model) throw new ServiceUnavailableException('服务端模型配置不完整');
     let url: URL;
@@ -14,8 +14,8 @@ export class DeepSeekService {
     }
     return { key, url, model };
   }
-  async complete(system: string, input: unknown): Promise<unknown> {
-    const { key, url, model } = this.configuration();
+  async complete(system: string, input: unknown, requireReal = false): Promise<unknown> {
+    const { key, url, model } = this.configuration(requireReal);
     if (model === 'mock-assessment-v1') {
       const request=input as {standard?:{abilities?:{id:string}[]}};
       return { abilities:(request.standard?.abilities ?? []).map(ability=>({ abilityId:ability.id,

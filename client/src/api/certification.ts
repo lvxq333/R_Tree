@@ -1,6 +1,8 @@
 import type {
   ApprovalAction,
   ApprovalItem,
+  ApprovalRemindResult,
+  ApprovalStats,
   CertificationDecision,
   CertificationItem,
   ManagerReviewInput,
@@ -80,6 +82,48 @@ export async function listApprovals(): Promise<ApprovalItem[]> {
     return res.data;
   } catch (error) {
     logger.error('获取审批列表失败', error);
+    throw error;
+  }
+}
+
+/** 员工工作台「我的申请」：本人提交的审批单及真实催办状态 */
+export async function listMyApprovals(): Promise<ApprovalItem[]> {
+  try {
+    const res = await axiosForBackend.request<ApprovalItem[]>({
+      url: '/api/approvals/mine',
+      method: 'GET',
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('获取我的申请列表失败', error);
+    throw error;
+  }
+}
+
+/** 催办：由服务端写入催办记录并返回最新催办状态，限流与上限均在后端判定 */
+export async function remindApproval(slug: string, note?: string): Promise<ApprovalRemindResult> {
+  try {
+    const res = await axiosForBackend.request<ApprovalRemindResult>({
+      url: `/api/approvals/${slug}/remind`,
+      method: 'POST',
+      data: { note },
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('发起催办失败', error);
+    throw error;
+  }
+}
+
+export async function getApprovalStats(): Promise<ApprovalStats> {
+  try {
+    const res = await axiosForBackend.request<ApprovalStats>({
+      url: '/api/approvals/stats',
+      method: 'GET',
+    });
+    return res.data;
+  } catch (error) {
+    logger.error('获取审批统计失败', error);
     throw error;
   }
 }

@@ -13,13 +13,16 @@ import { SuccessionModule } from './modules/succession/succession.module';
 import { TeamModule } from './modules/team/team.module';
 import { FactsModule } from './modules/facts/facts.module';
 import { JudgingModule } from './modules/judging/judging.module';
+import { PositionsModule } from './modules/positions/positions.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { FeishuModule } from './modules/feishu/feishu.module';
 
 @Module({
   imports: [
     // 平台 Module，提供平台能力
     LocalPlatformModule,
     AuthModule,
+    FeishuModule,
     // ====== @route-section: business-modules START ======
     // Place all business modules here.Do NOT add fallback modules here.
     EmployeeModule,
@@ -31,6 +34,7 @@ import { AuthModule } from './modules/auth/auth.module';
     TeamModule,
     FactsModule,
     JudgingModule,
+    PositionsModule,
     // ====== @route-section: business-modules END ======
 
     // ⚠️ @route-order: last

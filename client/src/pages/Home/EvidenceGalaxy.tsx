@@ -363,10 +363,9 @@ export default function EvidenceGalaxy({ certifications, onOpenDetail, onApply }
           })}</g>
           {visible.map(skill => {
             const point = pointFor(skill.key);
-            const isFocus = skill.key === focusKey;
             const isNeighbor = !!skill.item.skillSlug && neighborSlugs.has(skill.item.skillSlug);
             return <g key={skill.key} data-skill-key={skill.key}
-              className={`constellation-node ${statusClass(skill.item, skill.litLevel)}${skill.key === inspectedKey ? ' is-selected' : ''}${isFocus ? ' is-focused' : ''}${focusKey && !isFocus && !isNeighbor ? ' is-muted' : ''}`}
+              className={`constellation-node ${statusClass(skill.item, skill.litLevel)}${skill.key === inspectedKey ? ' is-selected' : ''}${focusKey && skill.key !== focusKey && !isNeighbor ? ' is-muted' : ''}`}
               transform={`translate(${point.x} ${point.y})`} role="button" tabIndex={0}
               aria-label={`${skill.item.title}，${labelOf(skill.item, skill.litLevel)}，${relationCount(skill)}项规则关联`}
               onPointerEnter={() => setHoveredKey(skill.key)} onPointerLeave={() => setHoveredKey(current => current === skill.key ? null : current)}

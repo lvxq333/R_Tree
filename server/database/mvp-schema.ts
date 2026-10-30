@@ -577,12 +577,15 @@ export const mvpTitleRequirement = pgTable("mvp_title_requirement", {
   skillSlug: varchar("skill_slug", { length: 64 }).notNull(),
   requiredLevel: integer("required_level").notNull(),
   isAuto: boolean("is_auto").default(false).notNull(),
+  isRequired: boolean("is_required").default(true).notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
   createdAt: customTimestamptz("created_at").default(sql`now()`).notNull(),
   updatedAt: customTimestamptz("updated_at").default(sql`now()`).notNull(),
 });
 
 /** mvp_title_track */
 export const mvpTitleTrack = pgTable("mvp_title_track", {
+  jobFamily: varchar("job_family", { length: 1 }).default("T").notNull(),
   id: uuid("id").primaryKey().defaultRandom(),
   slug: varchar("slug", { length: 64 }).notNull().unique(),
   name: varchar("name", { length: 128 }).notNull(),
@@ -629,3 +632,12 @@ export const mvpTables = {
   mvpTitleRequirement,
   mvpTitleTrack,
 };
+
+// 岗位自定义技能的可编辑标准；申请和评估另存提交时的不可变快照。
+export const mvpPositionSkillStandard = pgTable("mvp_position_skill_standard", {
+  skillSlug: varchar("skill_slug", { length: 64 }).notNull(),
+  standardVersionSlug: varchar("standard_version_slug", { length: 64 }).notNull(),
+  description: text("description").notNull().default(''),
+  levels: jsonb("levels").notNull().default([]),
+  updatedAt: customTimestamptz("updated_at").notNull().default(sql`now()`),
+}, table=>[uniqueIndex("mvp_position_skill_standard_key").on(table.skillSlug,table.standardVersionSlug)]);

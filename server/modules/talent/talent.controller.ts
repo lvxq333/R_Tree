@@ -1,44 +1,23 @@
-import { Controller, Delete, Get, Param, Post } from '@nestjs/common';
-import { NeedLogin } from '@server/platform/local-platform';
+import { Body, Controller, Delete, Get, Param, Post, Put, StreamableFile } from '@nestjs/common';
 import { TalentService } from './talent.service';
-import type {
-  ShortlistResponse,
-  TalentCandidatesResponse,
-} from '@shared/api.interface';
-
+import type { TalentCriteria, TalentSearchInput, TalentWorkspace } from '@shared/api.interface';
 @Controller('api/talent')
 export class TalentController {
-  constructor(private readonly talentService: TalentService) {}
-
-  @Get('candidates')
-  async getCandidates(): Promise<TalentCandidatesResponse> {
-    return this.talentService.getCandidates();
+  constructor(private readonly talent:TalentService) {}
+  @Get('catalog') catalog(){return this.talent.catalog();}
+  @Get('workspace') workspace(){return this.talent.workspace();}
+  @Put('workspace') save(@Body() body:TalentWorkspace){return this.talent.saveWorkspace(body);}
+  @Post('parse') parse(@Body() body:{prompt:string}){return this.talent.parse(body?.prompt);}
+  @Get('candidates') candidates(){return this.talent.legacyCandidates();}
+  @Post('search') search(@Body() body:TalentSearchInput){return this.talent.search(body);}
+  @Get('shortlist') shortlist(){return this.talent.getShortlist();}
+  @Post('shortlist/preview') preview(@Body() body:{criteria:TalentCriteria}){return this.talent.getShortlist(body?.criteria);}
+  @Post('shortlist/export') async export(@Body() body:{criteria:TalentCriteria}){
+    const stamp=new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai'}).format(new Date());
+    return new StreamableFile(await this.talent.exportShortlist(body?.criteria),{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      disposition:`attachment; filename*=UTF-8''${encodeURIComponent(`候选名单_${stamp}.xlsx`)}`});
   }
-
-  @Get('shortlist')
-  async getShortlist(): Promise<ShortlistResponse> {
-    return this.talentService.getShortlist();
-  }
-
-  @NeedLogin()
-  @Post('shortlist/:candidateSlug')
-  async addToShortlist(
-    @Param('candidateSlug') candidateSlug: string,
-  ): Promise<ShortlistResponse> {
-    return this.talentService.addToShortlist(candidateSlug);
-  }
-
-  @NeedLogin()
-  @Delete('shortlist')
-  async clearShortlist(): Promise<ShortlistResponse> {
-    return this.talentService.clearShortlist();
-  }
-
-  @NeedLogin()
-  @Delete('shortlist/:candidateSlug')
-  async removeFromShortlist(
-    @Param('candidateSlug') candidateSlug: string,
-  ): Promise<ShortlistResponse> {
-    return this.talentService.removeFromShortlist(candidateSlug);
-  }
+  @Post('shortlist/:candidateSlug') add(@Param('candidateSlug') slug:string){return this.talent.addToShortlist(slug);}
+  @Delete('shortlist/:candidateSlug') remove(@Param('candidateSlug') slug:string){return this.talent.removeFromShortlist(slug);}
+  @Delete('shortlist') clear(){return this.talent.clearShortlist();}
 }

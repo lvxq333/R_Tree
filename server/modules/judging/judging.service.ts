@@ -12,7 +12,9 @@ import type {
   JudgingOverview,
   JudgingRequirement,
   JudgingResource,
+  JudgingTrackView,
   ReadinessState,
+  TitlePipeline,
 } from '@shared/api.interface';
 
 /** 驳回后 15 天内不得对同一目标再提交 */
@@ -26,10 +28,17 @@ export const PREPARING_GAP_THRESHOLD = 1;
 /** 技术序列：职称在这些序列之间平级互认 */
 export const TECH_TRACKS: string[] = ['software', 'platform', 'ai'];
 
+/** 序列所属发展管道：以 mvp_title_track.pipeline 为准，缺省时按技术序列兜底 */
+export const pipelineOf = (row: { track_slug: string; pipeline?: string | null }): TitlePipeline =>
+  row.pipeline === 'management' || row.pipeline === 'tech'
+    ? row.pipeline
+    : TECH_TRACKS.includes(row.track_slug) ? 'tech' : 'management';
+
 type LevelRow = {
-  id: string; track_slug: string; track_name: string; level_order: number; level_code: string; level_name: string;
+  id: string; track_slug: string; track_name: string; pipeline: string | null;
+  level_order: number; level_code: string; level_name: string;
 };
-type RequirementRow = { title_level_id: string; skill_slug: string; required_level: number; skill_name: string | null };
+type RequirementRow = { title_level_id: string; skill_slug: string; required_level: number; is_required: boolean; skill_name: string | null };
 type TitleRow = { track_slug: string; level_order: number; level_code: string; level_name: string };
 type ApplicationRow = {
   slug: string; target_title_level_id: string | null; status: string; rejected_at: Date | string | null;
@@ -74,10 +83,11 @@ export class JudgingService {
   async getOverview(): Promise<JudgingOverview> {
     const user = currentEmployee();
     const ctx = await this.load(user.employeeSlug);
-    const tracks = new Map<string, { slug: string; name: string; levels: JudgingLevelView[] }>();
+    const tracks = new Map<string, JudgingTrackView>();
     for (const level of ctx.levels) {
       const view = this.buildLevel(level, ctx);
-      const entry = tracks.get(level.track_slug) ?? { slug: level.track_slug, name: level.track_name, levels: [] };
+      const entry = tracks.get(level.track_slug)
+        ?? { slug: level.track_slug, name: level.track_name, pipeline: pipelineOf(level), levels: [] };
       entry.levels.push(view);
       tracks.set(level.track_slug, entry);
     }
@@ -94,7 +104,7 @@ export class JudgingService {
     const employeeSlug = currentEmployee().employeeSlug;
     const ctx = await this.load(employeeSlug);
     const level = ctx.levels.find(row =>
-      row.track_slug === trackSlug && row.level_code.toLowerCase() === levelCode.toLowerCase());
+      row.track_slug === trackSlug && (row.level_code.toLowerCase() === levelCode.toLowerCase() || (/^T[1-4]$/i.test(levelCode)&&row.level_order===Number(levelCode.slice(1)))));
     if (!level) throw new NotFoundException(`职称层级不存在：${trackSlug} / ${levelCode}`);
 
     const view = this.buildLevel(level, ctx);
@@ -102,7 +112,7 @@ export class JudgingService {
     const competencyNames = await this.loadCompetencyNames();
 
     const gapItems = view.requirements
-      .filter(item => !item.met)
+      .filter(item => item.isRequired !== false && !item.met)
       .map(item => ({
         ...item,
         competencyNames: item.competencySlugs.map(slug => competencyNames.get(slug) ?? slug),
@@ -145,7 +155,7 @@ export class JudgingService {
       }
       if (!candidate) continue;
 
-      const signature = view.requirements.map(item => `${item.skillSlug}:${item.requiredLevel}`).sort().join('|');
+      const signature = view.requirements.filter(item=>item.isRequired!==false).map(item => `${item.skillSlug}:${item.requiredLevel}`).sort().join('|');
       const existing = bySignature.get(signature);
       if (!existing || (level.track_slug === preferred && existing.trackSlug !== preferred)) {
         bySignature.set(signature, candidate);
@@ -156,7 +166,7 @@ export class JudgingService {
 
   /** 忽略某个候选：写 7 天冷却，期间不再推送同一目标 */
   async dismiss(key: string): Promise<{ key: string; cooldownUntil: string }> {
-    if (!/^title:[a-z0-9-]+:t[1-6]$/i.test(key)) throw new Error('候选标识格式无效');
+    if (!/^title:[a-z0-9-]+:[tpmf][1-4]$/i.test(key)) throw new Error('候选标识格式无效');
     const employeeSlug = currentEmployee().employeeSlug;
     const cooldownUntil = new Date(Date.now() + DISMISS_COOLDOWN_DAYS * 86_400_000).toISOString();
     await this.db.execute(sql`
@@ -193,11 +203,14 @@ export class JudgingService {
     const [levels, requirements, skillLevels, ownedTitles, applications, appealRows, cooldownRows, competencyRows] =
       await Promise.all([
         this.db.execute<LevelRow>(sql`
-          SELECT tl.id, tl.track_slug, tt.name AS track_name, tl.level_order, tl.level_code, tl.name AS level_name
+          SELECT tl.id, tl.track_slug, tt.name AS track_name, tt.pipeline, tl.level_order, tl.level_code, tl.name AS level_name
           FROM mvp_title_level tl JOIN mvp_title_track tt ON tt.slug = tl.track_slug
+          WHERE tt.status='published' AND tl.standard_version_slug=(
+            SELECT slug FROM mvp_standard_version WHERE status='published'
+            ORDER BY published_at DESC NULLS LAST,created_at DESC LIMIT 1)
           ORDER BY tt.slug, tl.level_order`),
         this.db.execute<RequirementRow>(sql`
-          SELECT r.title_level_id, r.skill_slug, r.required_level, s.name AS skill_name
+          SELECT r.title_level_id, r.skill_slug, r.required_level, r.is_required, s.name AS skill_name
           FROM mvp_title_requirement r LEFT JOIN skill s ON s.slug = r.skill_slug`),
         this.db.execute<SkillLevelRow>(sql`
           SELECT skill_slug, max(level)::int AS level FROM mvp_employee_skill
@@ -293,7 +306,7 @@ export class JudgingService {
       if (heldOrder <= 0) continue;
       for (const level of input.levels) {
         if (level.track_slug !== trackSlug) continue;
-        const reqs = input.requirementsByLevel.get(level.id) ?? [];
+        const reqs = (input.requirementsByLevel.get(level.id) ?? []).filter(r=>r.is_required!==false);
         if (level.level_order <= heldOrder) {
           for (const req of reqs) {
             covered.add(req.skill_slug);
@@ -369,6 +382,7 @@ export class JudgingService {
         skillSlug: row.skill_slug,
         skillName: row.skill_name ?? row.skill_slug,
         requiredLevel: row.required_level,
+        isRequired: row.is_required,
         currentLevel,
         gapLevels: Math.max(0, row.required_level - currentLevel),
         met: currentLevel >= row.required_level,
@@ -377,8 +391,9 @@ export class JudgingService {
         fromBaseline: ctx.effective.baseline.has(row.skill_slug),
       };
     });
-    const met = requirements.filter(item => item.met).length;
-    const total = requirements.length;
+    const mandatory = requirements.filter(item=>item.isRequired!==false);
+    const met = mandatory.filter(item => item.met).length;
+    const total = mandatory.length;
     const blockers: JudgingBlocker[] = [];
 
     const sameLevel = ctx.ownedTitles.find(row => row.track_slug === level.track_slug && row.level_order === level.level_order);

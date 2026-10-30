@@ -1,0 +1,8 @@
+.career-family{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:13px}
+.career-family select{border:1px solid var(--border);border-radius:8px;padding:10px;background:#fff;color:var(--ink);font:inherit}
+.career-direction-menu{width:310px;max-width:calc(100vw - 40px)}
+.career-direction-menu>input{width:100%;border:1px solid var(--border);border-radius:7px;padding:10px;margin-bottom:8px;font:inherit}
+.career-direction-menu>[role=listbox]{max-height:280px;overflow-y:auto}
+.career-direction-menu p,.career-route-empty{padding:16px;color:var(--muted);font-size:13px}
+.career-direction-menu [role=option]{display:block;width:100%;text-align:left}
+@media(max-width:760px){.career-controls{flex-wrap:wrap}.career-controls .sequence-trigger{max-width:220px}}

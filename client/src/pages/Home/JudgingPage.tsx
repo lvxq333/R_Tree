@@ -217,7 +217,7 @@ const GapDetailPanel = ({ detail }: { detail: JudgingGapDetail }) => {
             <div>
               <b style={{ fontSize: 13 }}>{requirement.skillName}</b>
               <div style={{ fontSize: 12, color: '#667085', marginTop: 4 }}>
-                要求 L{requirement.requiredLevel} · 当前 L{requirement.currentLevel}
+                {requirement.isRequired===false?'推荐技能（不影响资格）':'必需技能'} · 要求 L{requirement.requiredLevel} · 当前 L{requirement.currentLevel}
                 {requirement.met
                   ? <span style={{ color: '#127a52', marginLeft: 8 }}>已达标</span>
                   : <span style={{ color: '#b25b00', marginLeft: 8 }}>差 {requirement.gapLevels} 级</span>}

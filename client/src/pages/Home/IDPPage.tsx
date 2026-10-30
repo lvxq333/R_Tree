@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { idpApi } from '@/api';
-import type { IdpAction, IdpActionStatus, IdpOptions, IdpResponse, IdpRevision, IdpLiveReview } from '@shared/api.interface';
+import type { IdpAction, IdpActionStatus, IdpOptions, IdpResponse, IdpRevision, IdpLiveReview, JudgingTrackView } from '@shared/api.interface';
 import { useUI } from './ui-context';
 import { downloadIdp, idpText } from './idp-export';
+import TitleTargetPicker, { EMPTY_TARGET, pipelineOf, type TitleTargetValue } from './TitleTargetPicker';
 
 const STATES: Record<IdpActionStatus,string> = {todo:'待开始','in-progress':'进行中',done:'已完成'};
 const MILESTONES: Record<string,string> = {done:'已完成',current:'进行中',next:'待启动'};
@@ -31,7 +32,7 @@ const IDPPage = () => {
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
   const [configure,setConfigure] = useState(false);
-  const [target,setTarget] = useState('');
+  const [target,setTarget] = useState<TitleTargetValue>(EMPTY_TARGET);
   const [startMonth,setStartMonth] = useState(monthNow);
   const [months,setMonths] = useState(24);
   const [actionEditor,setActionEditor] = useState<IdpAction|null>(null);
@@ -51,7 +52,14 @@ const IDPPage = () => {
     try {
       const [next,settings] = await Promise.all([idpApi.getIdp(),idpApi.getOptions()]);
       setSaved(next);setOptions(settings);setLoadError('');
-      setTarget(next.meta ? `${next.meta.track}:${next.meta.level}` : settings.defaultTarget ? `${settings.defaultTarget.track}:${settings.defaultTarget.level}` : '');
+      const pickTarget = (trackSlug?: string, levelCode?: string): TitleTargetValue => {
+        if (!trackSlug || !levelCode) return EMPTY_TARGET;
+        const found = settings.overview.tracks.find((item: JudgingTrackView)=>item.slug===trackSlug);
+        return {pipeline: found ? pipelineOf(found) : '', track: trackSlug, level: levelCode};
+      };
+      setTarget(next.meta
+        ? pickTarget(next.meta.track, next.meta.level)
+        : pickTarget(settings.defaultTarget?.track, settings.defaultTarget?.level));
       setStartMonth(next.meta?.startMonth ?? monthNow());setMonths(next.meta?.months ?? 24);
     } catch (cause) {setLoadError(message(cause));}
   },[]);
@@ -73,8 +81,8 @@ const IDPPage = () => {
     try {await operation();} catch(cause){setError(message(cause));} finally {setBusy(false);}
   }
   const generate = () => run(async()=>{
-    const [track,level] = target.split(':');
-    const result = await idpApi.generate({track,level,startMonth,months});
+    if(!target.track || !target.level) return;
+    const result = await idpApi.generate({track:target.track,level:target.level,startMonth,months});
     setDraft(result);setHistorical(null);setConfigure(false);setHistory(null);
   });
   const save = () => run(async()=>{
@@ -123,12 +131,10 @@ const IDPPage = () => {
       <h3>{hasPlan ? '调整目标与计划周期' : '制定你的第一份个人计划'}</h3>
       <p>依据当前职称、目标要求与真实 Gap 生成草案；确认后保存，再逐步记录实践与成果。</p>
       <form onSubmit={event=>{event.preventDefault();void generate();}}>
-        <label>目标职称<select value={target} required disabled={busy} onChange={event=>setTarget(event.target.value)}>
-          <option value="">请选择目标职称</option>{options.overview.tracks.flatMap(track=>track.levels.map(level=><option key={`${track.slug}:${level.levelCode}`} value={`${track.slug}:${level.levelCode}`}>{track.name} · {level.levelCode} {level.levelName}{level.state==='certified' ? '（保持与巩固）' : ''}</option>))}
-        </select></label>
+        <TitleTargetPicker tracks={options.overview.tracks} value={target} onChange={setTarget} disabled={busy}/>
         <label>开始月份<input type="month" min="2000-01" max="2099-12" value={startMonth} required disabled={busy} onChange={event=>setStartMonth(event.target.value)}/></label>
         <label>计划周期<select value={months} disabled={busy} onChange={event=>setMonths(Number(event.target.value))}><option value={12}>12 个月</option><option value={24}>24 个月</option><option value={36}>36 个月</option></select></label>
-        <button className="primary" disabled={busy || !target}>{busy ? '正在生成…' : '生成计划草案'}</button>
+        <button className="primary" disabled={busy || !target.track || !target.level}>{busy ? '正在生成…' : '生成计划草案'}</button>
       </form>
     </section>}
     {draft && <section className="panel idp-draft-banner idp-no-print"><div><h3>确认这份计划草案</h3><ul>{draft.changes?.map(item=><li key={item}>{item}</li>)}</ul><p>下面展示拟保存内容。已保存计划保持有效，确认后更新。</p></div><div><button className="primary" disabled={busy} onClick={()=>{void save();}}>{busy ? '正在保存…' : '确认并保存计划'}</button><button className="ghost" disabled={busy} onClick={()=>{setDraft(null);setConfigure(true);}}>返回调整</button><button className="ghost" disabled={busy} onClick={()=>{setDraft(null);setConfigure(false);}}>放弃预览</button></div></section>}

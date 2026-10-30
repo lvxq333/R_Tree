@@ -19,7 +19,9 @@
   --primary-foreground: hsl(220 14% 98%);
   --secondary: hsl(220 14% 96%);
   --secondary-foreground: hsl(220 14% 14%);
-  --muted: hsl(220 14% 96%);
+  /* 注意：--muted 已被 styles/legacy.css 用作「正文次要文字色」(#5b6472)，
+     这里改用 --ui-muted 命名空间，避免覆盖后文字变成近白色而看不清 */
+  --ui-muted: hsl(220 14% 96%);
   --muted-foreground: hsl(218 7% 59%);
   --accent: hsl(220 14% 96%);
   --accent-foreground: hsl(220 14% 14%);
@@ -98,7 +100,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
+  --color-muted: var(--ui-muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);

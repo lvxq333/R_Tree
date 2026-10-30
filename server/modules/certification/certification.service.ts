@@ -1,3 +1,4 @@
+import { SkillStandardsService } from '../skill-standards/skill-standards';
 import { currentEmployee } from '../auth/employee-context';
 import { randomUUID } from 'node:crypto';
 import {
@@ -10,18 +11,34 @@ import {
 } from '@nestjs/common';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
 import { and, asc, eq, sql } from 'drizzle-orm';
+import dayjs from 'dayjs';
 import { approval, employeeSkill, skill, skillCategory } from '@server/database/schema';
 import { employee } from '@server/database/schema';
 import { mvpEmployeeSkill } from '@server/database/mvp-schema';
 import type {
   ApprovalItem,
+  ApprovalReminderState,
   CertificationDecision,
   CertificationEvidence,
   CertificationItem,
   SelfApplicationInput,
 } from '@shared/api.interface';
 
-const APPLICATION_DUE = '09-19';
+/** 审批处理期限 SLA：提交后 7 个自然日内完成审核 */
+export const APPROVAL_SLA_DAYS = 7;
+
+/** 审批单处理期限（提交时间 + SLA），前后端一切「是否过期」判断都以它为准 */
+export function approvalDueAt(createdAt: Date | string): dayjs.Dayjs {
+  return dayjs(createdAt).add(APPROVAL_SLA_DAYS, 'day');
+}
+
+/**
+ * 审批单是否已超过处理期限。
+ * 处理期限为「提交当日起算的第 7 个自然日」，当天仍可处理，跨日后算超期。
+ */
+export function isApprovalOverdue(createdAt: Date | string): boolean {
+  return approvalDueAt(createdAt).isBefore(dayjs(), 'day');
+}
 
 export interface CertificationDecisionInput {
   decision: CertificationDecision;
@@ -114,7 +131,30 @@ function toApprovalKind(raw: string | null): ApprovalItem['kind'] {
   return raw === 'downgrade' ? 'downgrade' : 'application';
 }
 
-export function toApprovalItem(row: typeof approval.$inferSelect): ApprovalItem {
+/** 提交时间的真实展示：相对时间（刚提交 / 今天 / 昨天）或完整月日 */
+function formatSubmittedAt(createdAt: Date): string {
+  const submitted = dayjs(createdAt);
+  const now = dayjs();
+  if (now.diff(submitted, 'minute') < 10) return '刚刚';
+  if (submitted.isSame(now, 'day')) return `今天 ${submitted.format('HH:mm')}`;
+  if (submitted.isSame(now.subtract(1, 'day'), 'day')) return `昨天 ${submitted.format('HH:mm')}`;
+  return submitted.format('MM-DD HH:mm');
+}
+
+export function toApprovalItem(
+  row: typeof approval.$inferSelect,
+  linked?: { evidence: unknown; anchor: string | null } | null,
+  reminder?: ApprovalReminderState,
+): ApprovalItem {
+  // 时间统一由后端按真实入库时间计算：提交时间 = _created_at，处理期限 = 提交时间 + SLA
+  const submitted = dayjs(row.createdAt);
+  const due = approvalDueAt(row.createdAt);
+  // 队列状态标记同样由后端判定：非 pending 即已处理；待处理且期限早于今天即已过期
+  const status = toApprovalStatus(row.status);
+  const dueState: ApprovalItem['dueState'] =
+    status !== 'pending' ? 'processed'
+      : isApprovalOverdue(row.createdAt) ? 'overdue'
+        : 'active';
   return {
     id: row.slug,
     linkedId: row.linkedSlug ?? null,
@@ -126,11 +166,15 @@ export function toApprovalItem(row: typeof approval.$inferSelect): ApprovalItem 
     currentLevel: row.currentLevel ?? 0,
     targetLevel: row.targetLevel ?? 0,
     sourceLabel: row.sourceLabel ?? '',
-    submittedAt: row.submittedAt ?? '',
-    due: row.due ?? '',
-    status: toApprovalStatus(row.status),
+    submittedAt: formatSubmittedAt(submitted.toDate()),
+    due: due.format('MM-DD'),
+    dueState,
+    status,
     detail: row.detail ?? null,
     employeeResponse: row.employeeResponse ?? null,
+    evidence: normalizeEvidence(linked?.evidence),
+    anchor: linked?.anchor ?? null,
+    reminder: reminder ?? { count: 0, lastAt: null, canRemind: false, reason: null },
   };
 }
 
@@ -140,6 +184,7 @@ export class CertificationService {
 
   constructor(
     @Inject(DRIZZLE_DATABASE) private readonly db: PostgresJsDatabase,
+    private readonly standards: SkillStandardsService,
   ) {}
 
   async listCertifications(): Promise<CertificationItem[]> {
@@ -247,6 +292,11 @@ export class CertificationService {
     }
     const [chosen] = await this.db.select().from(skill).where(eq(skill.slug, input.skillSlug)).limit(1);
     if (!chosen) throw new BadRequestException('技能不在当前技能库中');
+    const standard=(await this.standards.read(chosen.slug)).assessment;
+    if(standard.managed&&!standard.configuredLevels?.includes(input.level))throw new BadRequestException('该技能目标等级尚未配置完整的技能说明、达标标准和证明材料要求，请联系管理者补齐后再申请');
+    if(input.standardHash&&input.standardHash!==standard.hash)throw new BadRequestException('技能标准已更新，请重新查看标准后提交');
+    const applicationAnchor=[`标准版本：${standard.version}`,standard.description?`技能说明：${standard.description}`:'',
+      ...standard.abilities.map(a=>`${a.name} · L${input.level} 达标标准：${a.anchors[input.level-1]}${a.evidenceRequirements?.[input.level-1]?`\n证明材料要求：${a.evidenceRequirements[input.level-1]}`:''}`)].filter(Boolean).join('\n\n');
     const [category] = chosen.categorySlug
       ? await this.db.select().from(skillCategory).where(eq(skillCategory.slug, chosen.categorySlug)).limit(1) : [];
     const [parent] = category?.parentSlug
@@ -287,7 +337,7 @@ export class CertificationService {
         status: 'pending',
         statusLabel: '审批中',
         explanation,
-        anchor: `达到 L${input.level} 对应的行为锚点，并能在真实工作或考核场景中提供可复核的成果。`,
+        anchor: applicationAnchor,
         evidence,
         deadline: '',
         sort,
@@ -433,8 +483,8 @@ export class CertificationService {
         currentLevel: certRow.currentLevel ?? 0,
         targetLevel: certRow.targetLevel ?? 0,
         sourceLabel: certRow.sourceLabel ?? '',
-        submittedAt: '刚刚',
-        due: APPLICATION_DUE,
+        submittedAt: null,
+        due: null,
         status: 'pending',
         detail: null,
         employeeResponse: null,
@@ -443,7 +493,7 @@ export class CertificationService {
       .returning();
     const row = inserted[0];
     if (!row) throw new InternalServerErrorException('审批单创建失败');
-    return toApprovalItem(row);
+    return toApprovalItem(row, { evidence: certRow.evidence, anchor: certRow.anchor ?? null });
   }
 
   private async updateCertification(

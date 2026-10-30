@@ -1,75 +1,17 @@
-import type {
-  ShortlistResponse,
-  TalentCandidatesResponse,
-} from '@shared/api.interface';
+import type { ShortlistResponse, TalentCandidatesResponse, TalentCatalog, TalentWorkspace, TalentParseResponse, TalentSearchInput, TalentSearchResponse, TalentCriteria } from '@shared/api.interface';
 import { axiosForBackend } from '@/lib/runtime';
-import { logger } from '@/lib/runtime';
-
-export async function getTalentCandidates(): Promise<TalentCandidatesResponse> {
-  try {
-    const res = await axiosForBackend.request<TalentCandidatesResponse>({
-      url: '/api/talent/candidates',
-      method: 'GET',
-    });
-    return res.data;
-  } catch (error) {
-    logger.error('获取人才候选人失败', error);
-    throw error;
-  }
+export async function getTalentCandidates():Promise<TalentCandidatesResponse> {return (await axiosForBackend.get('/api/talent/candidates')).data;}
+export async function getTalentCatalog():Promise<TalentCatalog> {return (await axiosForBackend.get('/api/talent/catalog')).data;}
+export async function getTalentWorkspace():Promise<TalentWorkspace> {return (await axiosForBackend.get('/api/talent/workspace')).data;}
+export async function saveTalentWorkspace(input:TalentWorkspace):Promise<TalentWorkspace> {return (await axiosForBackend.put('/api/talent/workspace',input)).data;}
+export async function parseTalentPrompt(prompt:string):Promise<TalentParseResponse> {return (await axiosForBackend.post('/api/talent/parse',{prompt},{timeout:100_000})).data;}
+export async function searchTalent(input:TalentSearchInput):Promise<TalentSearchResponse> {return (await axiosForBackend.post('/api/talent/search',input)).data;}
+export async function getShortlist(criteria?:TalentCriteria):Promise<ShortlistResponse> {
+  return criteria ? (await axiosForBackend.post('/api/talent/shortlist/preview',{criteria})).data : (await axiosForBackend.get('/api/talent/shortlist')).data;
 }
-
-export async function getShortlist(): Promise<ShortlistResponse> {
-  try {
-    const res = await axiosForBackend.request<ShortlistResponse>({
-      url: '/api/talent/shortlist',
-      method: 'GET',
-    });
-    return res.data;
-  } catch (error) {
-    logger.error('获取候选清单失败', error);
-    throw error;
-  }
-}
-
-export async function addToShortlist(
-  candidateSlug: string,
-): Promise<ShortlistResponse> {
-  try {
-    const res = await axiosForBackend.request<ShortlistResponse>({
-      url: `/api/talent/shortlist/${candidateSlug}`,
-      method: 'POST',
-    });
-    return res.data;
-  } catch (error) {
-    logger.error('加入候选清单失败', error);
-    throw error;
-  }
-}
-
-export async function removeFromShortlist(
-  candidateSlug: string,
-): Promise<ShortlistResponse> {
-  try {
-    const res = await axiosForBackend.request<ShortlistResponse>({
-      url: `/api/talent/shortlist/${candidateSlug}`,
-      method: 'DELETE',
-    });
-    return res.data;
-  } catch (error) {
-    logger.error('从候选清单移除失败', error);
-    throw error;
-  }
-}
-
-export async function clearShortlist(): Promise<ShortlistResponse> {
-  try {
-    const res = await axiosForBackend.request<ShortlistResponse>({
-      url: '/api/talent/shortlist',
-      method: 'DELETE',
-    });
-    return res.data;
-  } catch (error) {
-    logger.error('清空候选清单失败', error);
-    throw error;
-  }
+export async function addToShortlist(id:string):Promise<ShortlistResponse> {return (await axiosForBackend.post(`/api/talent/shortlist/${encodeURIComponent(id)}`)).data;}
+export async function removeFromShortlist(id:string):Promise<ShortlistResponse> {return (await axiosForBackend.delete(`/api/talent/shortlist/${encodeURIComponent(id)}`)).data;}
+export async function clearShortlist():Promise<ShortlistResponse> {return (await axiosForBackend.delete('/api/talent/shortlist')).data;}
+export async function exportShortlist(criteria:TalentCriteria):Promise<Blob> {
+  return (await axiosForBackend.post('/api/talent/shortlist/export',{criteria},{responseType:'blob'})).data;
 }

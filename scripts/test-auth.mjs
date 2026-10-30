@@ -31,6 +31,12 @@ try {
     await db.unsafe(await readFile(new URL(`../server/database/migrations/${name}`, import.meta.url), 'utf8'));
   const people = await db`SELECT id,slug,name FROM employee ORDER BY slug`;
   assert.ok(people.length >= 2);
+  await db`INSERT INTO mvp_standard_version SELECT * FROM public.mvp_standard_version WHERE status='published'`;
+  await db`INSERT INTO skill(slug,name) VALUES('auth-isolation-skill','接口隔离测试技能')`;
+  // Explicit fixture: the employee directory may grow or contain people with no prior certificates.
+  await db`INSERT INTO employee_skill(slug,employee_slug,title,status,source,evidence)
+    VALUES('auth-isolation-fixture',${people[0].slug},'账号隔离测试材料','pending','project',
+      '[{"type":"说明","title":"测试材料","detail":"仅用于独立 schema 的账号隔离验证"}]'::jsonb)`;
   const password = randomBytes(24).toString('base64url');
   const salt = randomBytes(16).toString('hex');
   const passwordHash = `scrypt:${salt}:${scryptSync(password, salt, 64).toString('hex')}`;
@@ -112,7 +118,7 @@ try {
     assert.ok(facts.data.items.every(item => item.employeeId === session.data.employeeId));
   }));
   const own = await call('/api/certifications/self-application', registered.cookie, 'POST', {
-    skill: '接口隔离测试技能', level: 2, evidenceTitle: '本人提交的资料', employeeSlug: people[0].slug,
+    skillSlug: 'auth-isolation-skill', level: 2, evidenceTitle: '本人提交的资料', employeeSlug: people[0].slug,
   });
   assert.equal(own.status, 201);
   assert.equal(own.data.certification.currentLevel, 0);

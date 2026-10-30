@@ -1,4 +1,4 @@
-import type { EmployeeWideRow, FactRecord, ManagerDashboardResponse, TeamSkillMapRow } from '@shared/api.interface';
+import type { EmployeeWideRow, FactRecord, HeatDetailResponse, ManagerDashboardResponse, TeamSkillMapRow } from '@shared/api.interface';
 import { axiosForBackend } from '@/lib/runtime';
 
 export const listWideEmployees = async (): Promise<EmployeeWideRow[]> =>
@@ -9,6 +9,9 @@ export const listTeamSkillMap = async (): Promise<TeamSkillMapRow[]> =>
 
 export const getManagerDashboard = async (filters: {role:string;grade:string}): Promise<ManagerDashboardResponse> =>
   (await axiosForBackend.get<ManagerDashboardResponse>('/api/fact-center/manager-overview',{params:filters})).data;
+
+export const getHeatDetail = async (filters: {skill:string;grade:string;role:string}): Promise<HeatDetailResponse> =>
+  (await axiosForBackend.get<HeatDetailResponse>('/api/fact-center/manager-overview/heat-detail',{params:filters})).data;
 
 export const listEmployeeFacts = async (slug: string): Promise<FactRecord[]> =>
   (await axiosForBackend.get<FactRecord[]>(`/api/fact-center/employees/${encodeURIComponent(slug)}/facts`)).data;

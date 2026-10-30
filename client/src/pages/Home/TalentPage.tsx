@@ -1,9 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import type {
-  ShortlistResponse,
-  TalentCandidate,
-  TalentCandidatesResponse,
-} from '@shared/api.interface';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import axios from 'axios';
+import type { TalentCandidate, TalentCatalog, TalentCriteria, TalentSearchResponse, TalentWorkspace } from '@shared/api.interface';
 import { talentApi } from '@/api';
 import { logger } from '@/lib/runtime';
 import { useUI } from './ui-context';
@@ -11,371 +8,122 @@ import TalentConditions from './TalentConditions';
 import TalentCandidateList from './TalentCandidateList';
 import ShortlistPanel from './ShortlistPanel';
 
-type TalentSegment = 'direct' | 'adjacent' | 'potential';
-type AnalyzePhase = 'idle' | 'loading' | 'done';
-
-const TALENT_SEGMENTS: { key: TalentSegment; title: string; note: string }[] = [
-  { key: 'direct', title: '直接匹配', note: '已有相关能力与经历' },
-  { key: 'adjacent', title: '相邻能力', note: '核心能力可迁移' },
-  { key: 'potential', title: '潜力人才', note: '短期培养后可胜任' },
+type Segment='direct'|'adjacent'|'potential';
+const SEGMENTS:{key:Segment;title:string;note:string}[]=[
+  {key:'direct',title:'直接匹配',note:'必需技能均有有效认证'},
+  {key:'adjacent',title:'相邻能力',note:'部分技能已有认证'},
+  {key:'potential',title:'待补充证据',note:'方向相关，技能仍需核实'},
 ];
-
-const SCOPE_OPTIONS: string[] = ['智能汽车事业群', 'AI 平台中心', '机器人创新中心'];
-const ORG_FILTER_LABEL: string = '机器人创新中心';
-const DEFAULT_PROMPT: string =
-  '我需要找适合参与具身智能业务的人。项目预计 10 月启动，需要理解机器人感知、强化学习或运动控制，有真实机器人项目经验更好，可投入至少 50%。';
-const DEFAULT_SCOPE_LABEL: string = '全公司人才技能池';
-
-function TalentSearchPage() {
-  const { navigate, showToast } = useUI();
-  const [prompt, setPrompt] = useState<string>(DEFAULT_PROMPT);
-  const [analyzePhase, setAnalyzePhase] = useState<AnalyzePhase>('idle');
-  const [activeSegment, setActiveSegment] = useState<TalentSegment>('direct');
-  const [availabilityOnly, setAvailabilityOnly] = useState<boolean>(false);
-  const [orgAll, setOrgAll] = useState<boolean>(true);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [candidates, setCandidates] = useState<TalentCandidatesResponse>({
-    direct: [],
-    adjacent: [],
-    potential: [],
-  });
-  const [shortlistItems, setShortlistItems] = useState<TalentCandidate[]>([]);
-  const [dataLoading, setDataLoading] = useState<boolean>(true);
-  const [dataError, setDataError] = useState<boolean>(false);
-  const [scopeOpen, setScopeOpen] = useState<boolean>(false);
-  const [scopeSelection, setScopeSelection] = useState<Set<string>>(() => new Set());
-  const [scopeLabel, setScopeLabel] = useState<string>(DEFAULT_SCOPE_LABEL);
-  const [scopeText, setScopeText] = useState<string>(`范围：${DEFAULT_SCOPE_LABEL}`);
-  const [roleBuilderOpen, setRoleBuilderOpen] = useState<boolean>(false);
-  const [roleName, setRoleName] = useState<string>('机器人运动控制工程师');
-  const [roleCount, setRoleCount] = useState<string>('1');
-  const promptRef = useRef<HTMLTextAreaElement | null>(null);
-  const scopeRef = useRef<HTMLDivElement | null>(null);
-  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
-
-  useEffect(() => {
-    const timers = timersRef.current;
-    return () => {
-      timers.forEach((timer: ReturnType<typeof setTimeout>) => clearTimeout(timer));
-    };
-  }, []);
-
-  useEffect(() => {
-    const onDocumentClick = (event: MouseEvent) => {
-      const scope = scopeRef.current;
-      if (scope && event.target instanceof Node && !scope.contains(event.target)) {
-        setScopeOpen(false);
-      }
-    };
-    document.addEventListener('click', onDocumentClick);
-    return () => document.removeEventListener('click', onDocumentClick);
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const [candidatesRes, shortlistRes]: [TalentCandidatesResponse, ShortlistResponse] =
-          await Promise.all([talentApi.getTalentCandidates(), talentApi.getShortlist()]);
-        if (cancelled) return;
-        setCandidates(candidatesRes);
-        setShortlistItems(shortlistRes.items);
-        setDataError(false);
-      } catch (error) {
-        if (cancelled) return;
-        logger.error('加载人才搜索数据失败', error);
-        setDataError(true);
-      } finally {
-        if (!cancelled) setDataLoading(false);
-      }
-    };
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const shortlistIds: Set<string> = new Set(
-    shortlistItems.map((item: TalentCandidate) => item.id),
-  );
-
-  const visibleItems: TalentCandidate[] = candidates[activeSegment].filter(
-    (item: TalentCandidate) =>
-      (!availabilityOnly || item.available) && (orgAll || item.org === ORG_FILTER_LABEL),
-  );
-
-  const applyShortlistResult = (res: ShortlistResponse) => {
-    setShortlistItems(res.items);
-  };
-
-  const handleShortlistError = (action: string) => (error: unknown) => {
-    logger.error(`候选清单操作失败：${action}`, error);
-    showToast('候选清单操作失败，请稍后重试。');
-  };
-
-  const toggleShortlist = (id: string) => {
-    const request: Promise<ShortlistResponse> = shortlistIds.has(id)
-      ? talentApi.removeFromShortlist(id)
-      : talentApi.addToShortlist(id);
-    request.then(applyShortlistResult).catch(handleShortlistError('切换候选清单'));
-  };
-
-  const removeFromShortlist = (id: string) => {
-    talentApi
-      .removeFromShortlist(id)
-      .then(applyShortlistResult)
-      .catch(handleShortlistError('移除候选人'));
-  };
-
-  const clearShortlist = () => {
-    talentApi.clearShortlist().then(applyShortlistResult).catch(handleShortlistError('清空候选清单'));
-  };
-
-  const expandPerson = (id: string) => {
-    setExpandedId((current: string | null) => (current === id ? null : id));
-  };
-
-  const switchSegment = (segment: TalentSegment) => {
-    setActiveSegment(segment);
-    setExpandedId(null);
-  };
-
-  const toggleAvailabilityOnly = () => setAvailabilityOnly((current: boolean) => !current);
-
-  const toggleOrgFilter = () => setOrgAll((current: boolean) => !current);
-
-  const handleAnalyze = () => {
-    if (!prompt.trim()) {
-      showToast('请先描述项目需要。');
-      promptRef.current?.focus();
-      return;
-    }
-    setAnalyzePhase('loading');
-    timersRef.current.push(
-      setTimeout(() => {
-        setAnalyzePhase('done');
-        setActiveSegment('direct');
-        setExpandedId(null);
-        showToast('需求已拆解，推荐结果已按直接匹配、相邻能力和潜力人才重新分层。');
-        timersRef.current.push(
-          setTimeout(() => setAnalyzePhase('idle'), 1600),
-        );
-      }, 850),
-    );
-  };
-
-  const focusPrompt = () => {
-    promptRef.current?.focus();
-    promptRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
-  const toggleScopeSelection = (org: string) => {
-    setScopeSelection((current: Set<string>) => {
-      const next = new Set(current);
-      if (next.has(org)) next.delete(org);
-      else next.add(org);
-      return next;
-    });
-  };
-
-  const applyScope = () => {
-    const selected: string[] = Array.from(scopeSelection);
-    const label = selected.length > 0 ? `${selected.length} 个业务中心` : DEFAULT_SCOPE_LABEL;
-    setScopeLabel(label);
-    setScopeText(`范围：${selected.length > 0 ? selected.join('、') : label}`);
-    setScopeOpen(false);
-    showToast(
-      selected.length > 0
-        ? `已将搜索范围限定为 ${selected.length} 个业务中心。`
-        : '已恢复搜索全公司人才技能池。',
-    );
-  };
-
-  const handleRoleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setRoleBuilderOpen(false);
-    showToast('项目角色已保存，可继续为该角色设置独立的能力条件。');
-  };
-
-  const analyzeLabel =
-    analyzePhase === 'loading' ? ' 正在解析项目需要…' : analyzePhase === 'done' ? ' 已更新推荐结果' : ' 解析需求并找人';
-  const analyzeIcon = analyzePhase === 'done' ? '✓' : '✦';
-
-  return (
-    <section className="page active" id="talent">
-      <section className="talent-brief panel">
-        <div className="talent-brief-head">
-          <div>
-            <h2>描述项目需要，找到真正合适的人</h2>
-            <p>系统会拆解领域、能力与经历要求；推荐结果保留证据、缺口和可用性，不代替管理判断。</p>
-          </div>
-          <div className="talent-mode" aria-label="人才配置模式">
-            <button className="active">人才搜索</button>
-            <button id="team-mode-button" onClick={() => navigate('team')}>
-              项目组队 <span>可扩展</span>
-            </button>
-          </div>
-        </div>
-        <div className="talent-prompt-wrap">
-          <textarea
-            id="talent-prompt"
-            aria-label="项目人才需求"
-            value={prompt}
-            onChange={(event: React.ChangeEvent<HTMLTextAreaElement>) => setPrompt(event.target.value)}
-          />
-          <div className="talent-prompt-actions">
-            <div className="scope-picker" id="scope-picker" ref={scopeRef}>
-              <button
-                className="scope-trigger"
-                id="scope-trigger"
-                aria-expanded={scopeOpen}
-                onClick={() => setScopeOpen((open: boolean) => !open)}
-              >
-                <span className="scope-icon">⌾</span>
-                <span><small>搜索范围</small><b id="scope-label">{scopeLabel}</b></span>
-                <i>⌄</i>
-              </button>
-              <div className={`scope-menu ${scopeOpen ? '' : 'hidden'}`} id="scope-menu">
-                <div><b>选择找人的业务中心</b><small>不选择时默认搜索全公司</small></div>
-                {SCOPE_OPTIONS.map((org: string) => (
-                  <label key={org}>
-                    <input
-                      type="checkbox"
-                      value={org}
-                      checked={scopeSelection.has(org)}
-                      onChange={() => toggleScopeSelection(org)}
-                    />
-                    {' '}{org}
-                  </label>
-                ))}
-                <button id="scope-confirm" onClick={applyScope}>应用范围</button>
-              </div>
-            </div>
-            <button
-              className={`analyze-button ${analyzePhase === 'loading' ? 'loading' : ''}`}
-              id="analyze-talent"
-              onClick={handleAnalyze}
-            >
-              <span>{analyzeIcon}</span>{analyzeLabel}
-            </button>
-          </div>
-        </div>
-        <TalentConditions onEditConditions={focusPrompt} />
-      </section>
-
-      <div className="talent-workspace">
-        <section className="talent-results panel">
-          <div className="talent-results-head">
-            <div>
-              <h3>推荐候选人</h3>
-              <p>
-                <b id="candidate-count">{visibleItems.length}</b>
-                {' '}人进入当前分层 · 技能与经历证据更新至 2026-09-13
-              </p>
-            </div>
-            <div className="result-controls">
-              <button
-                id="availability-filter"
-                className={availabilityOnly ? 'active' : ''}
-                onClick={toggleAvailabilityOnly}
-              >
-                仅看可投入
-              </button>
-              <button
-                id="org-filter"
-                className={orgAll ? '' : 'active'}
-                onClick={toggleOrgFilter}
-              >
-                {orgAll ? '全部组织 ⌄' : `${ORG_FILTER_LABEL} ×`}
-              </button>
-              <button aria-label="更多筛选">☷ 筛选</button>
-            </div>
-          </div>
-          <div className="talent-segments" role="tablist" aria-label="候选人匹配分层">
-            {TALENT_SEGMENTS.map((segment) => (
-              <button
-                key={segment.key}
-                className={activeSegment === segment.key ? 'active' : ''}
-                data-talent-segment={segment.key}
-                role="tab"
-                onClick={() => switchSegment(segment.key)}
-              >
-                <span>{segment.title}</span>
-                <b>{candidates[segment.key].length}</b>
-                <small>{segment.note}</small>
-              </button>
-            ))}
-          </div>
-          {dataLoading ? (
-            <div className="candidate-list" id="talent-candidate-list">
-              <div className="empty-candidates">
-                <b>正在加载候选人…</b>
-                <p>数据来自后端接口，请稍候。</p>
-              </div>
-            </div>
-          ) : dataError ? (
-            <div className="candidate-list" id="talent-candidate-list">
-              <div className="empty-candidates">
-                <b>候选人加载失败</b>
-                <p>请刷新页面重试。</p>
-              </div>
-            </div>
-          ) : (
-            <TalentCandidateList
-              items={visibleItems}
-              shortlist={shortlistIds}
-              expandedId={expandedId}
-              onTogglePerson={toggleShortlist}
-              onExpandPerson={expandPerson}
-            />
-          )}
-        </section>
-
-        <ShortlistPanel
-          items={shortlistItems}
-          scopeText={scopeText}
-          onRemove={removeFromShortlist}
-          onClear={clearShortlist}
-          onAddRole={() => setRoleBuilderOpen(true)}
-        />
-      </div>
-
-      {roleBuilderOpen && (
-        <div
-          className="role-builder-modal"
-          onClick={(event: React.MouseEvent<HTMLDivElement>) => {
-            if (event.target === event.currentTarget) setRoleBuilderOpen(false);
-          }}
-        >
-          <form className="role-builder-card" onSubmit={handleRoleSubmit}>
-            <h3>添加项目角色</h3>
-            <p>角色会独立保存必需能力和人数，后续可以基于已锁定成员重新计算团队组合。</p>
-            <label>
-              角色名称
-              <input value={roleName} onChange={(event: React.ChangeEvent<HTMLInputElement>) => setRoleName(event.target.value)} />
-            </label>
-            <label>
-              需要人数
-              <input
-                type="number"
-                min={1}
-                value={roleCount}
-                onChange={(event: React.ChangeEvent<HTMLInputElement>) => setRoleCount(event.target.value)}
-              />
-            </label>
-            <div className="role-builder-actions">
-              <button type="button" onClick={() => setRoleBuilderOpen(false)}>取消</button>
-              <button type="submit">保存角色</button>
-            </div>
-          </form>
-        </div>
-      )}
-    </section>
-  );
+const EMPTY:TalentSearchResponse={direct:[],adjacent:[],potential:[],searchedCount:0,calculatedAt:''};
+const INITIAL:TalentCriteria={title:'人才需求',required:[],bonus:[],keywords:[],minimumAvailability:null,startMonth:''};
+const NONE:TalentCatalog={skills:[],departments:[],scopeLabel:'可见员工',aiAvailable:false};
+function errorMessage(error:unknown,fallback:string):string {
+  if (axios.isAxiosError(error)) {
+    const message=error.response?.data?.message || error.response?.data?.error?.message;
+    if (typeof message==='string') return message;
+  }
+  return fallback;
 }
-
 export default function TalentPage() {
-  // 功能统一：所有角色共用同一人才搜索页，不再按角色切换独立实现；
-  // 可见数据范围由登录权限与接口层裁剪决定。
-  return <TalentSearchPage />;
+  const {showToast}=useUI();
+  const [prompt,setPrompt]=useState(''),[criteria,setCriteria]=useState<TalentCriteria>(INITIAL),[workspace,setWorkspace]=useState<TalentWorkspace|null>(null);
+  const [catalog,setCatalog]=useState<TalentCatalog>(NONE),[results,setResults]=useState<TalentSearchResponse>(EMPTY),[applied,setApplied]=useState<TalentCriteria>(INITIAL);
+  const [shortlist,setShortlist]=useState<TalentCandidate[]>([]),[segment,setSegment]=useState<Segment>('direct');
+  const [departments,setDepartments]=useState<string[]>([]),[scopeOpen,setScopeOpen]=useState(false),[availabilityOnly,setAvailabilityOnly]=useState(false),[keyword,setKeyword]=useState('');
+  const [conditionsOpen,setConditionsOpen]=useState(false),[filtersOpen,setFiltersOpen]=useState(false),[expandedId,setExpandedId]=useState<string|null>(null);
+  const [loading,setLoading]=useState(true),[searching,setSearching]=useState(false),[parsing,setParsing]=useState(false),[saving,setSaving]=useState(false),[exporting,setExporting]=useState(false),[shortlistBusy,setShortlistBusy]=useState(false);
+  const [pageSize,setPageSize]=useState(20),[appliedFilters,setAppliedFilters]=useState({departments:[] as string[],availabilityOnly:false,keyword:''});
+  const [error,setError]=useState(''),[warnings,setWarnings]=useState<string[]>([]),[hasSearched,setHasSearched]=useState(false);
+  const scopeRef=useRef<HTMLDivElement|null>(null),requestRef=useRef(0);
+  const draftChanged=Boolean(workspace&&(prompt!==workspace.prompt||JSON.stringify(criteria)!==JSON.stringify(workspace.criteria)));
+  const resultsStale=hasSearched&&(JSON.stringify(criteria)!==JSON.stringify(applied)||JSON.stringify({departments,availabilityOnly,keyword})!==JSON.stringify(appliedFilters));
+  const scopeText=appliedFilters.departments.length?`范围：${appliedFilters.departments.join('、')}`:`范围：${catalog.scopeLabel}`;
+  const search=useCallback(async (next:TalentCriteria,scope:string[],available:boolean,term:string)=>{
+    const id=++requestRef.current;setSearching(true);setError('');
+    try {
+      const [res,list]=await Promise.all([talentApi.searchTalent({criteria:next,departments:scope,availabilityOnly:available,keyword:term}),talentApi.getShortlist(next)]);
+      if (id!==requestRef.current)return;
+      setResults(res);setShortlist(list.items);setApplied(next);setAppliedFilters({departments:scope,availabilityOnly:available,keyword:term});setHasSearched(true);setExpandedId(null);setPageSize(20);
+      setSegment(res.direct.length?'direct':res.adjacent.length?'adjacent':res.potential.length?'potential':'direct');
+    } catch(cause) { if(id===requestRef.current){logger.error('人才搜索失败',cause);setError(errorMessage(cause,'搜索失败，请重试。'));} }
+    finally {if(id===requestRef.current)setSearching(false);}
+  },[]);
+  useEffect(()=>{
+    let cancelled=false;
+    void Promise.all([talentApi.getTalentCatalog(),talentApi.getTalentWorkspace()]).then(async ([meta,saved])=>{
+      if(cancelled)return;
+      setCatalog(meta);setWorkspace(saved);setPrompt(saved.prompt);setCriteria(saved.criteria);setApplied(saved.criteria);
+      await search(saved.criteria,[],false,'');
+    }).catch(cause=>{if(!cancelled){logger.error('加载人才搜索失败',cause);setError(errorMessage(cause,'加载失败，请检查数据库迁移并重试。'));}})
+      .finally(()=>{if(!cancelled)setLoading(false);});
+    return()=>{cancelled=true;requestRef.current++;};
+  },[search]);
+  useEffect(()=>{
+    const close=(event:MouseEvent)=>{if(scopeRef.current&&event.target instanceof Node&&!scopeRef.current.contains(event.target))setScopeOpen(false);};
+    document.addEventListener('click',close);return()=>document.removeEventListener('click',close);
+  },[]);
+  useEffect(()=>{
+    const save=()=>{void saveWorkspace();};
+    window.addEventListener('talent:save',save);return()=>window.removeEventListener('talent:save',save);
+  });
+  const saveWorkspace=async()=>{
+    if(!workspace||saving)return;
+    setSaving(true);
+    try {const saved=await talentApi.saveTalentWorkspace({prompt,criteria,revision:workspace.revision,updatedAt:workspace.updatedAt});setWorkspace(saved);showToast('人才需求已保存。');}
+    catch(cause){logger.error('保存人才需求失败',cause);showToast(errorMessage(cause,'保存失败，请重试。'));}
+    finally{setSaving(false);}
+  };
+  const analyze=async()=>{
+    if(!prompt.trim()){showToast('请先描述项目需要。');document.getElementById('talent-prompt')?.focus();return;}
+    if(parsing)return;setParsing(true);setWarnings([]);
+    try {const parsed=await talentApi.parseTalentPrompt(prompt);setCriteria(parsed.criteria);setWarnings(parsed.warnings);setConditionsOpen(true);showToast('AI 已拆解需求，请检查条件后执行搜索。');}
+    catch(cause){logger.error('解析人才需求失败',cause);showToast(errorMessage(cause,'AI 解析失败，请重试或手动设置条件。'));setConditionsOpen(true);}
+    finally{setParsing(false);}
+  };
+  const mutateShortlist=async (operation:()=>Promise<{items:TalentCandidate[]}>)=>{
+    if(shortlistBusy)return;setShortlistBusy(true);
+    try {await operation();const res=await talentApi.getShortlist(applied);setShortlist(res.items);}
+    catch(cause){logger.error('候选清单操作失败',cause);showToast(errorMessage(cause,'清单操作失败，请重试。'));}
+    finally{setShortlistBusy(false);}
+  };
+  const ids=new Set(shortlist.map(item=>item.id));
+  const exportList=async()=>{
+    if(exporting)return;setExporting(true);
+    try {
+      const blob=await talentApi.exportShortlist(applied),url=URL.createObjectURL(blob),anchor=document.createElement('a');
+      anchor.href=url;anchor.download=`候选名单_${new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Shanghai'})}.xlsx`;
+      document.body.append(anchor);anchor.click();anchor.remove();window.setTimeout(()=>URL.revokeObjectURL(url),60_000);
+      showToast('候选名单已导出。');
+    } catch(cause){logger.error('候选名单导出失败',cause);showToast(errorMessage(cause,'导出失败，请重试。'));}
+    finally{setExporting(false);}
+  };
+  const visible=results[segment];
+  const isDirectory=!applied.required.length&&!applied.bonus.length&&!applied.keywords.length;
+  return <section className="page active" id="talent">
+    <section className="talent-brief panel">
+      <div className="talent-brief-head"><div><h2>描述项目需要，找到有依据的候选人</h2><p>AI 拆解需求，按有效认证和登记经历匹配；结果用于沟通，投入仍需确认。</p></div>
+        <div className="talent-mode" aria-label="人才配置模式"><button className="active">人才搜索</button><span>项目角色与自动组队后续开放</span></div></div>
+      <div className="talent-prompt-wrap"><textarea id="talent-prompt" aria-label="项目人才需求" maxLength={4000} placeholder="描述业务目标、必需与加分技能、经历、开始时间和投入比例…" value={prompt} onChange={e=>setPrompt(e.target.value)}/>
+        <div className="talent-prompt-actions"><div className="scope-picker" id="scope-picker" ref={scopeRef}>
+          <button className="scope-trigger" id="scope-trigger" aria-expanded={scopeOpen} aria-controls="scope-menu" onClick={()=>setScopeOpen(!scopeOpen)}><span className="scope-icon">⌾</span><span><small>搜索范围</small><b id="scope-label">{departments.length?`${departments.length} 个部门`:catalog.scopeLabel}</b></span><i>⌄</i></button>
+          <div className={`scope-menu ${scopeOpen?'':'hidden'}`} id="scope-menu"><div><b>选择部门</b><small>仅在当前可见员工中筛选</small></div>{catalog.departments.map(org=><label key={org}><input type="checkbox" checked={departments.includes(org)} onChange={()=>setDepartments(current=>current.includes(org)?current.filter(v=>v!==org):[...current,org])}/>{org}</label>)}
+            <button onClick={()=>{setDepartments([]);setScopeOpen(false);}}>重置为全部可见员工</button><button onClick={()=>setScopeOpen(false)}>完成选择</button></div></div>
+          <button className={`analyze-button ${parsing?'loading':''}`} id="analyze-talent" disabled={parsing||!catalog.aiAvailable} onClick={()=>void analyze()}>{parsing?'正在解析…':catalog.aiAvailable?'✦ AI 解析需求':'AI 服务未配置'}</button></div></div>
+      {warnings.length>0&&<div className="talent-ai-warnings" role="status"><b>请确认 AI 解析结果：</b>{warnings.map((warning,i)=><span key={`${warning}-${i}`}>{warning}</span>)}</div>}
+      <TalentConditions criteria={criteria} catalog={catalog} disabled={loading||parsing} open={conditionsOpen} onToggle={()=>setConditionsOpen(!conditionsOpen)} onChange={setCriteria}/>
+      <div className="talent-runbar"><span>{draftChanged?'条件或描述尚未保存':''}{resultsStale?' · 搜索结果尚未按新条件更新':''}</span>
+        <button onClick={()=>void saveWorkspace()} disabled={!workspace||!draftChanged||saving}>{saving?'保存中…':'保存人才需求'}</button>
+        <button className="primary" disabled={loading||searching||!criteria.title.trim()} onClick={()=>void search(criteria,departments,availabilityOnly,keyword)}>{searching?'正在搜索…':'按条件搜索'}</button></div>
+    </section>
+    <div className="talent-workspace"><section className="talent-results panel"><div className="talent-results-head"><div><h3>候选人搜索结果</h3><p><b id="candidate-count">{visible.length}</b> 人进入当前分层 · 可见范围 {results.searchedCount} 人 · {results.calculatedAt?`更新于 ${results.calculatedAt.slice(0,10)}`:'等待搜索'}</p></div>
+      <div className="result-controls"><button id="availability-filter" className={availabilityOnly?'active':''} aria-pressed={availabilityOnly} onClick={()=>setAvailabilityOnly(!availabilityOnly)}>仅看可投入</button>
+        <button id="org-filter" className={departments.length?'active':''} onClick={()=>{setScopeOpen(true);document.getElementById('scope-trigger')?.scrollIntoView({behavior:'smooth',block:'center'});}}>{departments.length?`${departments.length} 个部门`:'全部可见部门'}</button>
+        <button aria-expanded={filtersOpen} onClick={()=>setFiltersOpen(!filtersOpen)}>☷ 筛选</button></div></div>
+      {filtersOpen&&<div className="talent-extra-filters"><label>姓名或岗位<input placeholder="输入关键词" value={keyword} onChange={e=>setKeyword(e.target.value)}/></label><button onClick={()=>{setKeyword('');setAvailabilityOnly(false);setDepartments([]);}}>重置筛选</button><span>修改筛选后点击“按条件搜索”</span></div>}
+      <div className="talent-segments" role="tablist" aria-label="候选人匹配分层">{SEGMENTS.map(item=><button key={item.key} className={segment===item.key?'active':''} data-talent-segment={item.key} role="tab" aria-selected={segment===item.key} onClick={()=>{setSegment(item.key);setExpandedId(null);}}><span>{isDirectory&&item.key==='direct'?'员工目录':item.title}</span><b>{results[item.key].length}</b><small>{isDirectory&&item.key==='direct'?'添加技能后显示匹配分层':item.note}</small></button>)}</div>
+      {error&&<div className="talent-error" role="alert">{error} <button onClick={()=>void search(criteria,departments,availabilityOnly,keyword)}>重试</button></div>}
+      {loading?<div className="candidate-list"><div className="empty-candidates"><b>正在加载人才数据…</b></div></div>:<TalentCandidateList items={visible.slice(0,pageSize)} busy={shortlistBusy} shortlist={ids} expandedId={expandedId} onExpandPerson={id=>setExpandedId(current=>current===id?null:id)} onTogglePerson={id=>void mutateShortlist(()=>ids.has(id)?talentApi.removeFromShortlist(id):talentApi.addToShortlist(id))}/>}
+      {!loading&&visible.length>pageSize&&<button className="talent-load-more" onClick={()=>setPageSize(size=>size+20)}>显示更多候选人（已显示 {pageSize}/{visible.length}）</button>}
+    </section><ShortlistPanel items={shortlist} criteria={applied} scopeText={scopeText} busy={shortlistBusy} exporting={exporting} onRemove={id=>void mutateShortlist(()=>talentApi.removeFromShortlist(id))} onClear={()=>void mutateShortlist(()=>talentApi.clearShortlist())} onExport={()=>void exportList()}/></div>
+  </section>;
 }

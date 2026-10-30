@@ -7,6 +7,7 @@ export type PageId =
   | 'idp'
   | 'colleagues'
   | 'manager'
+  | 'positions'
   | 'profile'
   | 'approval'
   | 'talent'

@@ -10,3 +10,5 @@ export async function getAssessment(slug:string,id:string):Promise<SkillAssessme
 export async function createAssessment(slug:string,input:CreateAssessmentInput):Promise<SkillAssessment> {
   return (await axiosForBackend.post<SkillAssessment>(`/api/skill-assessments/${encodeURIComponent(slug)}`,input)).data;
 }
+
+export const getSkillStandard = async (slug:string):Promise<import('@shared/api.interface').SkillAssessmentStandard> => (await axiosForBackend.get(`/api/skills/${encodeURIComponent(slug)}/standard`)).data;

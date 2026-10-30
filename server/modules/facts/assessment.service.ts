@@ -4,6 +4,7 @@ import { BadGatewayException, BadRequestException, ConflictException, ForbiddenE
 import { sql } from 'drizzle-orm';
 import { DRIZZLE_DATABASE, type PostgresJsDatabase } from '@server/platform/local-platform';
 import type { AssessmentResult, AssessmentWorkspace, CreateAssessmentInput, FactRecord, SkillAssessment, SkillAssessmentStandard } from '@shared/api.interface';
+import { SkillStandardsService } from '../skill-standards/skill-standards';
 import { ASSESSMENT_STANDARDS } from './assessment-standards';
 import { DeepSeekService } from './deepseek.service';
 import { FactsService } from './facts.service';
@@ -77,6 +78,7 @@ export function validateAssessment(raw: unknown, standard: SkillAssessmentStanda
       if (!material || !text(cite.quote,700) || !`${material.title}\n${material.text}`.includes(cite.quote)) throw new BadGatewayException('模型证据引用未通过原文核对，请重试');
       return {factId:material.id,version:material.version,quote:cite.quote};
     });
+    if (standard.managed && row.supportedLevel!==null && !standard.configuredLevels?.includes(Number(row.supportedLevel))) throw new BadGatewayException('模型使用了尚未配置的等级标准，请重试');
     if (row.supportedLevel!==null && !citations.length) throw new BadGatewayException('模型等级缺少证据引用，请重试');
     return { abilityId:row.abilityId,supportedLevel:row.supportedLevel as number|null,reason:row.reason,
       citations,gaps:row.gaps as string[],questions:row.questions as string[] };
@@ -93,7 +95,7 @@ export class AssessmentService implements OnModuleInit, OnModuleDestroy {
   private stopped=false;
   private readonly logger=new Logger(AssessmentService.name);
   constructor(@Inject(DRIZZLE_DATABASE) private readonly db:PostgresJsDatabase,
-    private readonly facts:FactsService,private readonly ai:DeepSeekService) {}
+    private readonly facts:FactsService,private readonly ai:DeepSeekService,private readonly standards:SkillStandardsService) {}
   async onModuleInit() {
     await this.initializeStandards();
     await this.db.execute(sql`UPDATE mvp_skill_assessment SET status='failed',error='服务重启中断了评估，请重试',finished_at=now() WHERE status='running'`);
@@ -118,25 +120,7 @@ export class AssessmentService implements OnModuleInit, OnModuleDestroy {
     const [catalog]=await this.db.execute<{slug:string;name:string}>(sql`SELECT slug,name FROM skill
       WHERE slug=${rows[0].skill_slug} OR ( ${rows[0].skill_slug}::text IS NULL AND name=${rows[0].title}) LIMIT 1`);
     if (!catalog) throw new NotFoundException('此技能不在技能目录中');
-    const [version]=await this.db.execute<{slug:string}>(sql`SELECT slug FROM mvp_standard_version
-      WHERE status='published' AND effective_at<=now() ORDER BY effective_at DESC LIMIT 1`);
-    if (!version) throw new NotFoundException('当前没有已生效的技能标准');
-    const mapped=await this.db.execute<{slug:string;name:string;level:number;anchor:string}>(sql`
-      SELECT DISTINCT c.slug,c.name,cl.level,cl.anchor FROM mvp_skill_competency sc
-      JOIN mvp_competency c ON c.slug=sc.competency_slug
-      JOIN mvp_competency_level cl ON cl.competency_slug=c.slug
-      WHERE sc.skill_slug=${catalog.slug} AND sc.standard_version_slug=${version.slug}
-      ORDER BY c.slug,cl.level`);
-    const ids=[...new Set(mapped.map(row=>row.slug))];
-    const abilities=ids.length ? ids.map(id=>({id,name:mapped.find(row=>row.slug===id)!.name,
-      anchors:Array.from({length:5},(_,index)=>mapped.find(row=>row.slug===id&&row.level===index+1)?.anchor??'该等级暂未配置行为锚点')}))
-      : [{id:catalog.slug,name:catalog.name,anchors:[]}];
-    if (!ids.length) {
-      const anchors=await this.db.execute<{level:number;anchor:string|null}>(sql`SELECT level,anchor FROM skill_level_anchor WHERE skill_slug=${catalog.slug}`);
-      abilities[0].anchors=Array.from({length:5},(_,index)=>anchors.find(row=>row.level===index+1)?.anchor??'该等级暂未配置行为锚点');
-    }
-    const definition={skillSlug:catalog.slug,name:catalog.name,version:version.slug,abilities};
-    const standard:SkillAssessmentStandard={...definition,hash:createHash('sha256').update(JSON.stringify(definition)).digest('hex')};
+    const standard=(await this.standards.read(catalog.slug)).assessment;
     return {employeeId:rows[0].employee_id,standard};
   }
   private async availableFacts():Promise<FactRecord[]> {
@@ -180,6 +164,7 @@ export class AssessmentService implements OnModuleInit, OnModuleDestroy {
   }
   async create(slug:string,input:CreateAssessmentInput,actor?:string):Promise<SkillAssessment> {
     const {employeeId,standard}=await this.context(slug,actor);
+    if(standard.managed&&!standard.configuredLevels?.includes(input?.targetLevel))throw new BadRequestException('目标等级尚未配置完整的技能说明、达标标准和证明材料要求，请联系管理者补齐');
     await this.db.execute(sql`INSERT INTO mvp_assessment_standard(hash,skill_slug,version,definition)
       VALUES(${standard.hash},${standard.skillSlug},${standard.version},${JSON.stringify(standard)}::jsonb)
       ON CONFLICT (skill_slug,version) DO NOTHING`);

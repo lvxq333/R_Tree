@@ -1,0 +1,63 @@
+import 'dotenv/config';
+import 'reflect-metadata';
+import assert from 'node:assert/strict';
+import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
+import { createRequire } from 'node:module';
+import postgres from 'postgres';
+const require=createRequire(import.meta.url);
+const {NestFactory}=require('@nestjs/core'),{AppModule}=require('../dist/server/app.module.js'),XLSX=require('xlsx');
+const schema='test_talent_'+randomUUID().replaceAll('-','');
+const admin=postgres(process.env.DATABASE_URL,{max:1,onnotice:()=>{}});
+let db,app;
+try {
+  await admin.unsafe(`CREATE SCHEMA "${schema}"`);
+  const url=new URL(process.env.DATABASE_URL);url.searchParams.set('search_path',schema);
+  db=postgres(url.toString(),{max:1,onnotice:()=>{}});
+  const tables=await admin`SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename`;
+  for(const {tablename:name} of tables){assert.match(name,/^[a-z_]+$/);await db.unsafe(`CREATE TABLE "${name}" (LIKE public."${name}" INCLUDING ALL)`);if(!name.startsWith('app_')&&!name.startsWith('mvp_talent_'))await db.unsafe(`INSERT INTO "${name}" OVERRIDING SYSTEM VALUE SELECT * FROM public."${name}"`);}
+  const people=await db`SELECT id,slug,department,personnel_role,job_grade FROM employee WHERE status='active'`;
+  const hr=people.find(p=>p.personnel_role==='hr'),expert=people.find(p=>p.job_grade==='T4'&&p.personnel_role!=='hr'),employee=people.find(p=>p.job_grade!=='T4'&&p.personnel_role!=='hr');
+  assert.ok(hr&&expert&&employee);
+  const password=randomBytes(24).toString('base64url'),salt=randomBytes(16).toString('hex');
+  for(const [i,p] of [hr,expert,employee].entries())await db`INSERT INTO app_account(employee_id,username,password_hash) VALUES(${p.id},${'talent-test-'+i},${`scrypt:${salt}:${scryptSync(password,salt,64).toString('hex')}`})`;
+  process.env.DATABASE_URL=url.toString();process.env.LOCAL_DEMO='true';process.env.AI_MODE='mock';
+  app=await NestFactory.create(AppModule,{logger:false});await app.listen(0,'127.0.0.1');process.env.SERVER_PORT=String(app.getHttpServer().address().port);
+  const base=`http://127.0.0.1:${process.env.SERVER_PORT}`;
+  async function call(path,cookie,method='GET',body){const res=await fetch(base+path,{method,headers:{Origin:base,'Content-Type':'application/json',...(cookie?{Cookie:cookie}:{})},body:body===undefined?undefined:JSON.stringify(body)});
+    const type=res.headers.get('content-type')??'';return {status:res.status,data:type.includes('spreadsheet')?Buffer.from(await res.arrayBuffer()):await res.json(),cookie:res.headers.get('set-cookie')?.split(';')[0]};}
+  const cookies=[];for(let i=0;i<3;i++){const login=await call('/api/auth/login',null,'POST',{username:'talent-test-'+i,password});assert.equal(login.status,201);cookies.push(login.cookie);}
+  const [h,x,e]=cookies;
+  assert.equal((await call('/api/talent/catalog')).status,401);
+  for(const path of ['/api/talent/catalog','/api/talent/workspace','/api/talent/shortlist'])assert.equal((await call(path,e)).status,403);
+  const hc=await call('/api/talent/catalog',h),xc=await call('/api/talent/catalog',x);assert.equal(hc.status,200);assert.equal(xc.status,200);assert.ok(hc.data.skills.length>0);
+  const legacy=await call('/api/talent/candidates',h);assert.equal(legacy.status,200);assert.ok(legacy.data.direct.some(p=>p.id==='he-jing'),'旧组队候选仍可读取');
+  const all=await call('/api/talent/search',h,'POST',{criteria:{title:'目录',required:[],bonus:[],keywords:[],minimumAvailability:null,startMonth:''},departments:[],availabilityOnly:false,keyword:''});
+  assert.equal(all.status,201,JSON.stringify(all.data));assert.ok(all.data.searchedCount>0);
+  const visible=new Set([hr.slug,...people.filter(p=>p.department===expert.department).map(p=>p.slug)]);
+  const expertResult=await call('/api/talent/search',x,'POST',{criteria:{title:'目录',required:[],bonus:[],keywords:[],minimumAvailability:null,startMonth:''},departments:[],availabilityOnly:false,keyword:''});
+  assert.equal(expertResult.status,201);assert.ok(expertResult.data.searchedCount<=all.data.searchedCount);
+  const expertIds=[...expertResult.data.direct,...expertResult.data.adjacent,...expertResult.data.potential].map(p=>p.id);
+  const authorizedRelations=await db`SELECT employee_slug FROM mvp_org_relation WHERE target_slug=${expert.slug} AND relation_type IN ('expert','panel') AND effective_to IS NULL`;
+  for(const row of authorizedRelations)visible.add(row.employee_slug);
+  assert.ok(expertIds.every(id=>visible.has(id)));
+  const outside=all.data.direct.find(p=>!expertIds.includes(p.id));assert.ok(outside,'需要权限外候选人测试');
+  assert.equal((await call(`/api/talent/shortlist/${outside.id}`,x,'POST')).status,404);
+  const skill=hc.data.skills.find(s=>s.name==='数据分析')??hc.data.skills[0];
+  const criteria={title:'测试需求',required:[{skillSlug:skill.slug,level:2}],bonus:[],keywords:[],minimumAvailability:50,startMonth:'2026-11'};
+  const matched=await call('/api/talent/search',h,'POST',{criteria,departments:[],availabilityOnly:false,keyword:''});assert.equal(matched.status,201);
+  for(const candidate of matched.data.direct)assert.ok(candidate.requiredMatches[0].met);
+  for(const candidate of matched.data.adjacent)assert.ok(!candidate.requiredMatches[0].met&&candidate.requiredMatches[0].currentLevel>0);
+  assert.equal((await call('/api/talent/search',h,'POST',{criteria:{...criteria,required:[{skillSlug:'unknown',level:2}]},departments:[],availabilityOnly:false,keyword:''})).status,400);
+  const saved=await call('/api/talent/workspace',h,'PUT',{prompt:'测试搜索需求',criteria,revision:0});assert.equal(saved.status,200,JSON.stringify(saved.data));
+  assert.equal((await call('/api/talent/workspace',h,'PUT',{prompt:'旧版本',criteria,revision:0})).status,409);
+  assert.equal((await call('/api/talent/workspace',x)).data.revision,0);
+  const person=matched.data.direct[0]??matched.data.adjacent[0];assert.ok(person);
+  const added=await call(`/api/talent/shortlist/${person.id}`,h,'POST');assert.equal(added.status,201);assert.equal(added.data.items.length,1);
+  assert.equal((await call('/api/talent/shortlist',x)).data.items.length,0);
+  const exported=await call('/api/talent/shortlist/export',h,'POST',{criteria});assert.equal(exported.status,201);
+  const book=XLSX.read(exported.data,{type:'buffer'});assert.equal(book.SheetNames[0],'候选名单');
+  const rows=XLSX.utils.sheet_to_json(book.Sheets['候选名单'],{header:1});assert.equal(rows[1][0],person.name);assert.equal(rows[1][3],'测试需求');
+  assert.equal((await call(`/api/talent/shortlist/${person.id}`,h,'DELETE')).data.items.length,0);
+  assert.equal((await call('/api/talent/shortlist/export',h,'POST',{criteria})).status,400);
+  console.log('人才搜索：权限、分层、条件校验、独立清单、版本冲突和 Excel 导出通过');
+} finally {if(app)await app.close();if(db)await db.end();await admin.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);await admin.end();}

@@ -140,8 +140,13 @@ export const performanceRecord = pgTable("performance_record", {
 
 export const teamAssignment = pgTable("team_assignment", {
   id: uuid("id").primaryKey().defaultRandom(),
-  roleSlug: varchar("role_slug", { length: 64 }).notNull().unique(),
+  roleSlug: varchar("role_slug", { length: 64 }).notNull(),
   candidateSlug: varchar("candidate_slug", { length: 64 }).notNull(),
+  /** 成员对组队邀请的响应：pending 待响应 / accepted 已接受 / rejected 已拒绝 */
+  response: varchar("response", { length: 16 }).notNull().default("pending"),
+  respondedAt: customTimestamptz("responded_at", { precision: 3 }),
+  responseSource: varchar("response_source", { length: 16 }).notNull().default("employee"),
+  rejectNote: varchar("reject_note", { length: 255 }),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)
@@ -153,7 +158,7 @@ export const teamAssignment = pgTable("team_assignment", {
   updatedBy: userProfile("_updated_by").default(sql`CASE
     WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
 }, (table) => [
-  uniqueIndex("team_assignment_role_slug_key").on(table.roleSlug),
+  uniqueIndex("team_assignment_role_candidate_key").on(table.roleSlug, table.candidateSlug),
 ]);
 
 export const teamRole = pgTable("team_role", {
@@ -193,6 +198,14 @@ export const teamProject = pgTable("team_project", {
   title: varchar("title", { length: 128 }).notNull(),
   period: varchar("period", { length: 64 }),
   note: varchar("note", { length: 255 }),
+  /**
+   * 组队方案状态：draft 草稿 / confirming 协调确认中 / adjusting 有成员拒绝待调整 / confirmed 全员接受
+   */
+  status: varchar("status", { length: 16 }).notNull().default("draft"),
+  /** 方案归属部门（创建时手选；可见范围=本部门方案+本人创建，HR 全可见） */
+  department: varchar("department", { length: 128 }),
+  creatorSlug: varchar("creator_slug", { length: 64 }),
+  creatorName: varchar("creator_name", { length: 64 }),
   // System field: Creation time (auto-filled, do not modify)
   createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
   // System field: Creator (auto-filled, do not modify)
@@ -541,6 +554,21 @@ export const approval = pgTable("approval", {
     WHEN (current_setting('app.user_id'::text, true) = ''::text) THEN NULL`),
 }, (table) => [
   uniqueIndex("approval_slug_key").on(table.slug),
+]);
+
+/** 审批催办记录：员工对未处理的申请发起催办时写入，供审批人侧展示与审计留痕 */
+export const approvalReminder = pgTable("approval_reminder", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  slug: varchar("slug", { length: 96 }).notNull().unique(),
+  approvalSlug: varchar("approval_slug", { length: 64 }).notNull(),
+  requesterSlug: varchar("requester_slug", { length: 64 }),
+  requesterName: varchar("requester_name", { length: 64 }),
+  department: varchar("department", { length: 128 }),
+  targetScope: varchar("target_scope", { length: 32 }).notNull().default('approver'),
+  note: text("note"),
+  createdAt: customTimestamptz("_created_at", { precision: 3 }).notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (table) => [
+  index("approval_reminder_approval_idx").on(table.approvalSlug, table.createdAt),
 ]);
 
 export const skillGap = pgTable("skill_gap", {

@@ -37,7 +37,10 @@
     "test:judging": "node scripts/test-judging.mjs",
     "db:start:docker": "docker compose up -d db",
     "db:seed:enterprise": "node scripts/seed-enterprise-data.mjs > scripts/seed-enterprise-data.sql && PGPASSWORD=skilltree_local_demo psql -h 127.0.0.1 -p 55432 -U skilltree -d skilltree -f scripts/seed-enterprise-data.sql",
-    "test:idp": "npm run build:server && node scripts/test-idp.mjs"
+    "test:idp": "npm run build:server && node scripts/test-idp.mjs",
+    "test:positions": "npm run build:server && node scripts/test-positions.mjs",
+    "test:talent": "npm run build:server && node scripts/test-talent.mjs",
+    "test:team": "npm run build:server && node scripts/test-team.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.20",
@@ -59,7 +62,8 @@
     "sonner": "^2.0.7",
     "lucide-react": "^0.554.0",
     "clsx": "~2.0.1",
-    "tailwind-merge": "~3.4.0"
+    "tailwind-merge": "~3.4.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^22.18.6",

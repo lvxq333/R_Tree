@@ -78,7 +78,7 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
     <div className="source-explanation"><b>正式认证：</b>该技能 L{item.currentLevel} 已点亮{item.approvedAt ? `，生效于 ${item.approvedAt}` : ''}。材料评估仅提供申请参考，不改变审批结论。</div>
     {workspace && <details><summary>查看 L{item.currentLevel} 子能力标准 · {workspace.standard.version}</summary>
       {workspace.standard.abilities.map(ability => <div className="anchor-section" key={ability.id}><h4>{ability.name}</h4>
-        <p>{ability.anchors[item.currentLevel-1] ?? '该等级暂未配置行为锚点'}</p></div>)}
+        <p>{ability.anchors[item.currentLevel-1] ?? '该等级暂未配置行为锚点'}</p>{ability.evidenceRequirements?.[item.currentLevel-1]&&<p><b>证明材料要求：</b>{ability.evidenceRequirements[item.currentLevel-1]}</p>}</div>)}
     </details>}
     {job && <details><summary>查看申请前材料评估记录 · {new Date(job.createdAt).toLocaleString('zh-CN')}</summary>
       {job.simulated && <p className="source-explanation">模拟评估 · 未调用真实大模型，不可用于认证。</p>}
@@ -102,9 +102,10 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
           {LEVELS.map((name,i)=><option key={name} value={i+1} disabled={i+1<=item.currentLevel}>L{i+1} · {name}</option>)}
         </select></label>
       </div>
+      {workspace.standard.description&&<p className="source-explanation"><b>技能说明：</b>{workspace.standard.description}</p>}
       <details><summary>查看目标 L{target} 子能力标准 · {workspace.standard.version}</summary>
         {workspace.standard.abilities.map(ability=><div className="anchor-section" key={ability.id}>
-          <h4>{ability.name}</h4><p><b>L{target} {LEVELS[target-1]}：</b>{ability.anchors[target-1]}</p>
+          <h4>{ability.name}</h4><p style={{whiteSpace:'pre-wrap'}}><b>L{target} {LEVELS[target-1]}：</b>{ability.anchors[target-1]}</p>{ability.evidenceRequirements?.[target-1]&&<p style={{whiteSpace:'pre-wrap'}}><b>证明材料要求：</b>{ability.evidenceRequirements[target-1]}</p>}
         </div>)}
       </details>
       <h4>本次能力证据</h4>
@@ -125,7 +126,7 @@ export default function SkillAssessmentPanel({item}:{item:CertificationItem}) {
       </div>
       <div className="detail-actions">
         <button className="ghost" disabled={busy} onClick={()=>void refreshMaterials()}>载入最新材料</button>
-        <button className="primary" disabled={busy||(!selected.length&&!material.trim())} onClick={()=>void evaluate()}>
+        <button className="primary" disabled={busy||(!selected.length&&!material.trim())||Boolean(workspace.standard.managed&&!workspace.standard.configuredLevels?.includes(target))} onClick={()=>void evaluate()}>
           {busy?'评估中…':job?.status==='failed'?'重试评估':'评估所选证据'}</button>
       </div>
       {job?<div aria-live="polite">

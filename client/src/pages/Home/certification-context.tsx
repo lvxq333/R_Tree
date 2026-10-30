@@ -15,6 +15,7 @@ import { useUI } from './ui-context';
 import type {
   ApprovalAction,
   ApprovalItem,
+  ApprovalStats,
   CertificationDecision,
   CertificationFilter,
   CertificationItem,
@@ -26,6 +27,7 @@ import type {
 export type {
   ApprovalAction,
   ApprovalItem,
+  ApprovalStats,
   CertificationDecision,
   CertificationFilter,
   CertificationItem,
@@ -36,6 +38,7 @@ export type {
 interface CertificationContextValue {
   certifications: CertificationItem[];
   approvals: ApprovalItem[];
+  approvalStats: ApprovalStats | null;
   loading: boolean;
   error: string | null;
   readyCount: number;
@@ -62,6 +65,7 @@ export function CertificationProvider({ children }: { children: ReactNode }): JS
   const { navigate, showToast } = useUI();
   const [certifications, setCertifications] = useState<CertificationItem[]>([]);
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
+  const [approvalStats, setApprovalStats] = useState<ApprovalStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [selfApplicationOpen, setSelfApplicationState] = useState<boolean>(false);
@@ -74,8 +78,12 @@ export function CertificationProvider({ children }: { children: ReactNode }): JS
   }, []);
 
   const refetchApprovals = useCallback(async (): Promise<void> => {
-    const items: ApprovalItem[] = await certificationApi.listApprovals();
+    const [items, stats] = await Promise.all([
+      certificationApi.listApprovals(),
+      certificationApi.getApprovalStats(),
+    ]);
     setApprovals(items);
+    setApprovalStats(stats);
   }, []);
 
   useEffect(() => {
@@ -89,13 +97,15 @@ export function CertificationProvider({ children }: { children: ReactNode }): JS
     const load = async (): Promise<void> => {
       setLoading(true);
       try {
-        const [certificationItems, approvalItems] = await Promise.all([
+        const [certificationItems, approvalItems, stats] = await Promise.all([
           certificationApi.listCertifications(),
           certificationApi.listApprovals(),
+          certificationApi.getApprovalStats(),
         ]);
         if (cancelled) return;
         setCertifications(certificationItems);
         setApprovals(approvalItems);
+        setApprovalStats(stats);
         setError(null);
       } catch (loadError) {
         logger.error('加载认证与审批数据失败', loadError);
@@ -228,6 +238,7 @@ export function CertificationProvider({ children }: { children: ReactNode }): JS
   const value = useMemo<CertificationContextValue>(() => ({
     certifications,
     approvals,
+    approvalStats,
     loading,
     error,
     readyCount,
@@ -246,6 +257,7 @@ export function CertificationProvider({ children }: { children: ReactNode }): JS
   }), [
     certifications,
     approvals,
+    approvalStats,
     loading,
     error,
     readyCount,

@@ -1,89 +1,26 @@
-import type { TalentCandidate } from './types';
-import { useUI } from './ui-context';
-
-interface ShortlistPanelProps {
-  items: TalentCandidate[];
-  scopeText: string;
-  onRemove: (id: string) => void;
-  onClear: () => void;
-  onAddRole: () => void;
+import type { TalentCandidate, TalentCriteria } from '@shared/api.interface';
+interface Props {
+  items:TalentCandidate[]; criteria:TalentCriteria; scopeText:string; busy:boolean; exporting:boolean;
+  onRemove:(id:string)=>void; onClear:()=>void; onExport:()=>void;
 }
-
-function coverageValue(count: number): number {
-  return Math.min(96, count > 0 ? 58 + count * 25 : 0);
+export default function ShortlistPanel({items,criteria,scopeText,busy,exporting,onRemove,onClear,onExport}:Props) {
+  const covered=criteria.required.filter(skill=>items.some(p=>p.requiredMatches?.some(m=>m.skillSlug===skill.skillSlug&&m.met))).length;
+  const coverage=criteria.required.length?Math.round(covered/criteria.required.length*100):null;
+  const missing=criteria.required.filter(skill=>!items.some(p=>p.requiredMatches?.some(m=>m.skillSlug===skill.skillSlug&&m.met)));
+  const unknown=items.filter(p=>p.availabilityPercent===null).length;
+  return <aside className="shortlist-panel panel" aria-label="个人候选清单">
+    <div className="shortlist-head"><div><span>我的候选清单</span><h3><b id="shortlist-count">{items.length}</b> 位候选人</h3></div><button id="clear-shortlist" disabled={busy||!items.length} onClick={onClear}>清空</button></div>
+    <div className="shortlist-context"><span>当前匹配需求</span><b>{criteria.title}</b><small id="shortlist-scope">{scopeText}</small><small>按当前账号保存，跨页面刷新保留</small></div>
+    <div id="shortlist-items" className="shortlist-items">{items.length?items.map(item=><div className="shortlist-item" key={item.id}>
+      <i className={`talent-avatar ${item.avatarTone}`}>{item.avatar}</i><span><b>{item.name}</b><small>{item.org} · {item.availability}</small></span>
+      <button disabled={busy} aria-label={`从候选清单移除 ${item.name}`} onClick={()=>onRemove(item.id)}>×</button>
+    </div>):<div className="shortlist-empty">还没有加入候选人。<br/>从左侧搜索结果中加入合适的人。</div>}</div>
+    <div className="shortlist-readiness"><div><span>必需技能覆盖</span><b id="coverage-value">{coverage===null?'未设置':`${coverage}%`}</b></div>
+      <div className="readiness-track"><i id="coverage-track" style={{width:`${coverage ?? 0}%`}}/></div>
+      <p id="coverage-note">{coverage===null?'添加必需技能后，按候选人的有效认证计算覆盖情况。':`已覆盖 ${covered}/${criteria.required.length} 项必需技能。${missing.length?`仍有 ${missing.length} 项缺少达标候选人。`:'每项至少有一位候选人达标。'}`}</p>
+      {unknown>0&&<p>{unknown} 位候选人的投入比例待确认。</p>}
+    </div>
+    <button className="primary shortlist-primary" id="create-shortlist" disabled={busy||exporting||!items.length} onClick={onExport}>{exporting?'正在导出…':'↓ 导出 Excel 候选名单'}</button>
+    <small className="privacy-note">导出包含当前权限内的候选人、技能依据和缺口，供后续沟通确认。</small>
+  </aside>;
 }
-
-function coverageNote(count: number): string {
-  if (count > 1) return '核心能力已形成互补；下一步可增加项目角色并检查人员冲突。';
-  if (count === 1) return '强化学习与机器人感知已有可靠覆盖；运动控制仍建议补充 1 位候选。';
-  return '加入候选人后，系统会按能力覆盖、经历与可用性分别提示风险。';
-}
-
-const ShortlistPanel = ({ items, scopeText, onRemove, onClear, onAddRole }: ShortlistPanelProps) => {
-  const { showToast } = useUI();
-  const coverage = coverageValue(items.length);
-
-  return (
-    <aside className="shortlist-panel panel">
-      <div className="shortlist-head">
-        <div>
-          <span>候选清单</span>
-          <h3><b id="shortlist-count">{items.length}</b> 位候选人</h3>
-        </div>
-        <button id="clear-shortlist" onClick={onClear}>清空</button>
-      </div>
-      <div className="shortlist-context">
-        <span>当前需求</span>
-        <b>具身智能业务探索</b>
-        <small id="shortlist-scope">{scopeText}</small>
-      </div>
-      <div id="shortlist-items" className="shortlist-items">
-        {items.length > 0 ? (
-          items.map((item: TalentCandidate) => (
-            <div key={item.id} className="shortlist-item">
-              <i className={`talent-avatar ${item.avatarTone}`}>{item.avatar}</i>
-              <span>
-                <b>{item.name}</b>
-                <small>{item.role.split(' · ')[0]} · {item.availability}</small>
-              </span>
-              <button
-                data-remove-shortlist={item.id}
-                aria-label={`从候选清单移除 ${item.name}`}
-                onClick={() => onRemove(item.id)}
-              >
-                ×
-              </button>
-            </div>
-          ))
-        ) : (
-          <div className="shortlist-empty">
-            还没有加入候选人。<br />从左侧推荐结果中加入合适的人。
-          </div>
-        )}
-      </div>
-      <div className="shortlist-readiness">
-        <div><span>必需能力覆盖</span><b id="coverage-value">{coverage}%</b></div>
-        <div className="readiness-track"><i id="coverage-track" style={{ width: `${coverage}%` }} /></div>
-        <p id="coverage-note">{coverageNote(items.length)}</p>
-      </div>
-      <div className="next-stage">
-        <span>后续可扩展</span>
-        <p>添加项目角色后，可计算团队组合、人员冲突与跨组织协调路径。</p>
-        <button id="add-role-button" onClick={onAddRole}>＋ 添加项目角色</button>
-      </div>
-      <button
-        className="primary shortlist-primary"
-        id="create-shortlist"
-        disabled={items.length === 0}
-        onClick={() =>
-          showToast(`已生成包含 ${items.length} 位候选人的名单，可发起跨组织沟通。`)
-        }
-      >
-        生成候选名单
-      </button>
-      <small className="privacy-note">跨组织候选默认仅展示授权摘要，发起沟通后进入确认流程。</small>
-    </aside>
-  );
-};
-
-export default ShortlistPanel;

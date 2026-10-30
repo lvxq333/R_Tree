@@ -11,6 +11,7 @@ import { seedMockFacts } from './seed-facts.mjs';
 const require=createRequire(import.meta.url);
 const {employeeScope}=require('../dist/server/modules/auth/employee-context.js');
 const {AssessmentService,validateAssessment,cleanMaterial}=require('../dist/server/modules/facts/assessment.service.js');
+const {SkillStandardsService}=require('../dist/server/modules/skill-standards/skill-standards.js');
 const {FactsService}=require('../dist/server/modules/facts/facts.service.js');
 const {DeepSeekService}=require('../dist/server/modules/facts/deepseek.service.js');
 const {BadGatewayException}=require('@nestjs/common');
@@ -41,7 +42,7 @@ try {
       citations:i===0?[{factId:input.materials[0].id,version:input.materials[0].version,quote:input.materials[0].title}]:[],
       gaps:i===0?[]:['缺少相关材料'],questions:['请补充实践过程']}))};
   }};
-  const service=new AssessmentService(db,facts,fakeAi);
+  const service=new AssessmentService(db,facts,fakeAi,new SkillStandardsService(db));
   await service.initializeStandards();
   await service.initializeStandards();
   const [person]=await client`SELECT id,slug FROM employee WHERE slug='zhang-wei'`;
@@ -73,10 +74,14 @@ try {
   await assert.rejects(service.create(cert.slug,{...input,factIds:[foreign.id]},person.id),/不可用/);
   if(certificationFact)await assert.rejects(service.create(cert.slug,{...input,factIds:[certificationFact.id]},person.id),/不可用/);
   await assert.rejects(service.create(cert.slug,{...input,targetLevel:6},person.id),/L1~L5/);
-  const originalMode=process.env.AI_MODE;
-  process.env.AI_MODE='mock';
-  assert.throws(()=>new DeepSeekService().configuration(),/不使用模拟/);
-  if(originalMode===undefined)delete process.env.AI_MODE;else process.env.AI_MODE=originalMode;
+  const originalMode=process.env.ASSESSMENT_MODE;
+  process.env.ASSESSMENT_MODE='mock';
+  const mockService=new DeepSeekService();
+  assert.deepEqual(mockService.configuration(),{model:'mock-assessment-v1',key:null,url:null});
+  const simulated=await mockService.complete('',{standard:workspace.standard});
+  assert.equal(simulated.abilities.length,workspace.standard.abilities.length);
+  assert.ok(simulated.abilities.every(a=>a.supportedLevel===null&&a.citations.length===0&&a.reason.includes('模拟评估')),'模拟评估不能认定员工等级或编造证据');
+  if(originalMode===undefined)delete process.env.ASSESSMENT_MODE;else process.env.ASSESSMENT_MODE=originalMode;
   const valid={abilities:workspace.standard.abilities.map(a=>({abilityId:a.id,supportedLevel:null,reason:'证据不足',citations:[],gaps:[],questions:[]}))};
   assert.equal(validateAssessment(valid,workspace.standard,[],2).gapCount,workspace.standard.abilities.length);
   const bad=structuredClone(valid);bad.abilities[0].supportedLevel=3;
@@ -94,7 +99,7 @@ try {
   assert.equal(failed.status,'failed');assert.equal(failed.error,'模型账户余额不足');assert.equal(failed.result,null);
   const retry=await service.create(cert.slug,input,person.id);assert.notEqual(retry.id,next.id);
   if(process.argv.includes('--real')) {
-    const realService=new AssessmentService(db,facts,new DeepSeekService());
+    const realService=new AssessmentService(db,facts,new DeepSeekService(),new SkillStandardsService(db));
     const samples=await client`SELECT slug,skill_slug FROM employee_skill WHERE employee_slug=${person.slug}
       AND skill_slug IN ('programming','testing','k8s','collaboration') ORDER BY skill_slug`;
     for(const sample of samples) {
@@ -114,7 +119,7 @@ try {
   }
   console.log(JSON.stringify({result:'passed',checks:['immutable versioned standards','partial child coverage','scope isolation','exclude circular evidence',
     'simulated provenance marked in UI and preserved internally','concurrent idempotency','successful cache','source-version invalidation','strict citation validation',
-    'no mock fallback','provider failure surfaced','retry retains history']}));
+    'explicit mock mode cannot grant levels','provider failure surfaced','retry retains history']}));
 }finally{
   await client?.end();
   await admin.unsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);

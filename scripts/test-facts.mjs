@@ -28,7 +28,7 @@ try {
   // Existing demo current employee has no project row. Add a fixture only to the isolated copy.
   await client`INSERT INTO employee_project(employee_slug,title,time_range)
     SELECT slug,'隔离测试项目','2026.10' FROM employee WHERE slug='zhang-san'`;
-  const migrations = await Promise.all(['001-facts-center.sql','002-mock-fact-sources.sql','014-employee-fact-center.sql'].map(name =>
+  const migrations = await Promise.all(['001-facts-center.sql','002-mock-fact-sources.sql','014-employee-fact-center.sql','015-employee-directory.sql'].map(name =>
     readFile(new URL(`../server/database/migrations/${name}`,import.meta.url),'utf8')));
   for (let replay=0;replay<2;replay++) for(const migration of migrations) await client.unsafe(migration);
   const seeded = await seedMockFacts(client);

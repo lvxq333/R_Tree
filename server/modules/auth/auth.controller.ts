@@ -59,10 +59,11 @@ export class AuthController {
 
   @Get('feishu/callback')
   async callback(@Query('code') code: string | undefined, @Query('state') state: string | undefined,
-    @Req() request: Request, @Res() response: Response) {
+    @Query('ticket') ticket: string | undefined, @Req() request: Request, @Res() response: Response) {
     response.clearCookie(OAUTH_COOKIE, cookieOptions(0));
-    if (!code || !state) throw new BadRequestException('飞书未返回授权码');
-    const result = await this.auth.finishFeishu(code, state, cookie(request, OAUTH_COOKIE));
+    if (!(ticket || code) || !state) throw new BadRequestException('飞书未返回授权凭证');
+    const current = await this.auth.userFromToken(cookie(request, SESSION_COOKIE));
+    const result = await this.auth.finishFeishu(ticket || code!, state, cookie(request, OAUTH_COOKIE), current?.accountId);
     response.cookie(SESSION_COOKIE, result.token, cookieOptions(7 * 24 * 60 * 60_000));
     const appUrl = process.env.AUTH_APP_URL || `http://127.0.0.1:${process.env.SERVER_PORT || 3000}/`;
     response.redirect(new URL('#overview', appUrl).toString());

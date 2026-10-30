@@ -1,5 +1,8 @@
-import type { JSX } from 'react';
-import type { CertificationEvidence, CertificationItem } from '@shared/api.interface';
+import { useEffect, useState, type JSX } from 'react';
+import type { ApprovalItem, CertificationEvidence, CertificationItem } from '@shared/api.interface';
+import { certificationApi } from '@/api';
+import { logger } from '@/lib/runtime';
+import { useUI } from './ui-context';
 import { useCertifications } from './certification-context';
 import SkillAssessmentPanel from './SkillAssessmentPanel';
 
@@ -13,6 +16,37 @@ export interface CertificationDetailProps {
 
 const CertificationDetail = ({ item }: CertificationDetailProps) => {
   const { decideCertification } = useCertifications();
+  const { showToast } = useUI();
+  // 本人提交的审批单与催办状态来自后端（含能否催办的真实原因），不使用前端模拟
+  const [myApprovals, setMyApprovals] = useState<ApprovalItem[]>([]);
+  const [reminding, setReminding] = useState(false);
+
+  const reloadMyApprovals = async (): Promise<void> => {
+    try {
+      setMyApprovals(await certificationApi.listMyApprovals());
+    } catch (error) {
+      logger.error('获取我的申请失败', error);
+    }
+  };
+
+  useEffect(() => {
+    void reloadMyApprovals();
+  }, []);
+
+  const handleRemind = async (slug: string): Promise<void> => {
+    if (reminding) return;
+    setReminding(true);
+    try {
+      const result = await certificationApi.remindApproval(slug);
+      showToast(`${result.deliveredTo}，已发起第 ${result.approval.reminder.count} 次催办。`);
+    } catch (error) {
+      const message = (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+      showToast(message ?? '催办失败，请稍后重试。');
+    } finally {
+      setReminding(false);
+      await reloadMyApprovals();
+    }
+  };
 
   if (!item) return <aside className="panel cert-detail" id="cert-detail" aria-live="polite" />;
 
@@ -50,9 +84,25 @@ const CertificationDetail = ({ item }: CertificationDetailProps) => {
       </>
     );
   } else if (item.status === 'pending') {
+    // 催办按钮只在本人发起的待审批申请上出现；能否催办与原因均由后端判定
+    const linkedApproval = myApprovals.find(
+      (entry: ApprovalItem) => entry.linkedId === item.id && entry.status === 'pending',
+    );
+    const reminder = linkedApproval?.reminder;
+    const remindedNote = reminder && reminder.count > 0 ? ` · 已催办 ${reminder.count} 次` : '';
     actions = (
       <>
-        <span className="detail-note">已提交，审批通过前不会修改正式等级</span>
+        <span className="detail-note">已提交，审批通过前不会修改正式等级{remindedNote}</span>
+        {linkedApproval && (
+          <button
+            className="ghost remind-button"
+            disabled={!reminder?.canRemind || reminding}
+            title={reminder?.reason ?? '提醒审批人尽快处理'}
+            onClick={() => { void handleRemind(linkedApproval.id); }}
+          >
+            {reminding ? '催办中…' : '催办提醒'}
+          </button>
+        )}
         <button className="ghost" disabled>等待审批</button>
       </>
     );
@@ -93,9 +143,9 @@ const CertificationDetail = ({ item }: CertificationDetailProps) => {
           </div>
         ))}
       </section>
-      {isReview || !item.skillSlug ? <section className="anchor-section">
-        <h4>{isReview ? `当前 L${item.currentLevel} 行为锚点` : `L${item.targetLevel} 行为锚点`}</h4>
-        <p>{item.anchor}</p>
+      {isReview || item.anchor ? <section className="anchor-section">
+        <h4>{isReview ? `当前 L${item.currentLevel} 行为锚点` : `本次申请采用的 L${item.targetLevel} 标准`}</h4>
+        <p style={{whiteSpace:'pre-wrap'}}>{item.anchor}</p>
       </section> : null}
       {!isReview && item.skillSlug && !item.historical
         ? <SkillAssessmentPanel key={item.id} item={item}/> : null}

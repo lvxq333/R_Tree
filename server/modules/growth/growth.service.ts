@@ -9,17 +9,15 @@ import {
   employee,
   skill,
   skillCategory,
-  skillGap,
 } from '@server/database/schema';
 import {
-  mvpCompetency,
   mvpEmployeeSkill,
   mvpEmployeeTitle,
-  mvpSkillCompetency,
   mvpTitleLevel,
   mvpTitleRequirement,
 } from '@server/database/mvp-schema';
 import { JudgingService } from '../judging/judging.service';
+import { resolveCareerDirection } from './career-position';
 import type {
   AbilityAxis,
   AbilityStructureResponse,
@@ -29,7 +27,6 @@ import type {
   CareerSequenceView,
   GapActionsResponse,
   GapAction,
-  GapCompetency,
   GapListResponse,
   GapPoolItem,
   GapSource,
@@ -38,7 +35,6 @@ import type {
   SkillGrowthEvent,
 } from '@shared/api.interface';
 
-const GAP_SOURCES: string[] = ['career', 'okr', 'current'];
 /** 技术序列：管理通道取这些序列的最高职级做平移基准 */
 const TECH_TRACKS: string[] = ['software', 'platform', 'ai'];
 /** 能力结构雷达图的六个固定维度：技能分类 → 维度聚合 */
@@ -58,18 +54,6 @@ const GAP_SOURCE_LABELS: Record<GapSource, string> = {
   profile: '画像',
 };
 
-function toGapSource(value: string | null): GapSource {
-  if (value === 'career' || value === 'okr' || value === 'current' || value === 'profile') {
-    return value;
-  }
-  return 'career';
-}
-
-function toGapPriority(value: string | null): 'p0' | 'p1' | 'p2' {
-  if (value === 'p0' || value === 'p1' || value === 'p2') return value;
-  return 'p2';
-}
-
 @Injectable()
 export class GrowthService {
   constructor(
@@ -82,7 +66,7 @@ export class GrowthService {
     const rows = await this.db
       .select()
       .from(mvpEmployeeSkill)
-      .where(and(eq(mvpEmployeeSkill.employeeSlug, employeeSlug), eq(mvpEmployeeSkill.status, 'active')));
+      .where(and(eq(mvpEmployeeSkill.employeeSlug, employeeSlug), eq(mvpEmployeeSkill.status, 'active'), sql`(${mvpEmployeeSkill.reviewDueAt} IS NULL OR ${mvpEmployeeSkill.reviewDueAt} >= now())`));
     const levels = new Map<string, number>();
     for (const row of rows) {
       const current = levels.get(row.skillSlug) ?? 0;
@@ -114,10 +98,10 @@ export class GrowthService {
 
     const levelRows = await this.db
       .select({ id: mvpTitleLevel.id, trackSlug: mvpTitleLevel.trackSlug, levelOrder: mvpTitleLevel.levelOrder })
-      .from(mvpTitleLevel);
+      .from(mvpTitleLevel).where(sql`${mvpTitleLevel.standardVersionSlug}=(SELECT slug FROM mvp_standard_version WHERE status='published' ORDER BY published_at DESC NULLS LAST,created_at DESC LIMIT 1) AND COALESCE(${mvpTitleLevel.pathLabel},'')=''`);
     const reqRows = await this.db
       .select({ titleLevelId: mvpTitleRequirement.titleLevelId, skillSlug: mvpTitleRequirement.skillSlug, requiredLevel: mvpTitleRequirement.requiredLevel })
-      .from(mvpTitleRequirement);
+      .from(mvpTitleRequirement).where(eq(mvpTitleRequirement.isRequired,true));
     const reqsByLevelId = new Map<string, { skillSlug: string; requiredLevel: number }[]>();
     for (const row of reqRows) {
       const list = reqsByLevelId.get(row.titleLevelId) ?? [];
@@ -154,7 +138,47 @@ export class GrowthService {
     return { levelByTrack, sourceByTrack };
   }
 
+  /** 路线浏览从岗位标准实时生成；不写入员工方向，也不参与Gap池选取。 */
   async getCareer(): Promise<CareerResponse> {
+    const employeeSlug=currentEmployee().employeeSlug;
+    const [overview,tracks,profiles,held,certificates]=await Promise.all([
+      this.judging.getOverview(),
+      this.db.execute<{slug:string;name:string;family:import('@shared/api.interface').JobFamily}>(sql`SELECT slug,name,job_family AS family FROM mvp_title_track WHERE status='published' ORDER BY CASE job_family WHEN 'T' THEN 1 WHEN 'P' THEN 2 WHEN 'M' THEN 3 ELSE 4 END,name,slug`),
+      this.db.execute<{preferred_track:string|null;role:string|null;job_grade:string|null}>(sql`SELECT preferred_track,role,job_grade FROM employee WHERE slug=${employeeSlug}`),
+      this.heldLevelsByTrack(employeeSlug),
+      this.db.execute<{skill_slug:string;level:number}>(sql`SELECT skill_slug,max(level)::int AS level FROM mvp_employee_skill WHERE employee_slug=${employeeSlug} AND status='active' AND (review_due_at IS NULL OR review_due_at>=now()) GROUP BY skill_slug`),
+    ]);
+    const profile=profiles[0];
+    const certifiedLevels=new Map(certificates.map(row=>[row.skill_slug,row.level]));
+    const preferred=resolveCareerDirection(profile??{role:null,preferred_track:null,job_grade:null},tracks.map(track=>({...track,
+      titles:(overview.tracks.find(t=>t.slug===track.slug)?.levels??[]).map(level=>level.levelName)})));
+    const sequences:CareerSequenceView[]=tracks.map(track=>{
+      const levels=(overview.tracks.find(t=>t.slug===track.slug)?.levels??[]).sort((a,b)=>a.levelOrder-b.levelOrder);
+      const recorded=track.slug===preferred&&profile?.job_grade&&new RegExp(`^${track.family}[1-4]$`).test(profile.job_grade)?Number(profile.job_grade.slice(1)):0;
+      const heldLevel=Math.max(held.levelByTrack.get(track.slug)??0,recorded);
+      const nodes:CareerNode[]=levels.map(level=>{
+        const achieved=level.levelOrder<=heldLevel||level.state==='certified';
+        // 路线节点可体现岗位职级，但技能展示只使用实际有效认证，不虚构L1或覆盖等级。
+        const skills=level.requirements.map(r=>{
+          const certifiedLevel=certifiedLevels.get(r.skillSlug);
+          return {name:r.skillName,target:r.requiredLevel,current:certifiedLevel??0,
+            ...(certifiedLevel!==undefined?{certifiedLevel}:{}),isRequired:r.isRequired,source:'cert' as const};
+        });
+        const mandatory=skills.filter(s=>s.isRequired!==false);
+        return {id:`${track.slug}:${level.levelCode}`,code:level.levelCode,title:level.levelName,
+          achieved,isNext:false,meta:achieved?(level.levelOrder===heldLevel?(track.slug===preferred?'当前岗位':'当前职级'):'已达成'):'岗位能力要求',
+          state:achieved?'已达成':mandatory.length?'岗位能力参考':'标准未配置',
+          coverage:mandatory.length?Math.round(mandatory.filter(s=>s.current>=s.target).length/mandatory.length*100):0,
+          description:mandatory.length?'按岗位标准与有效技能认证对照；推荐技能不影响满足度。':'该职级尚未配置必需技能标准，请联系管理人员完善。',skills};
+      });
+      const next=nodes.find(n=>!n.achieved);
+      if(next){next.isNext=true;next.meta='推荐下一站';if(next.skills.some(s=>s.isRequired!==false))next.state='推荐下一站';}
+      return {key:track.slug,label:track.name,family:track.family,description:`${track.name}岗位发展路线`,nodes};
+    });
+    return {sequences,preferredTrack:preferred};
+  }
+
+  private async getLegacyCareer(): Promise<CareerResponse> {
     const employeeSlug = currentEmployee().employeeSlug;
     const sequences = await this.db.select().from(careerSequence);
     const nodes = await this.db
@@ -271,7 +295,7 @@ export class GrowthService {
     // 未达成的职级展示管理通道自身职称；能力要求按基准职级覆盖。
     const titleLevelRows = await this.db
       .select({ trackSlug: mvpTitleLevel.trackSlug, levelOrder: mvpTitleLevel.levelOrder, name: mvpTitleLevel.name })
-      .from(mvpTitleLevel);
+      .from(mvpTitleLevel).where(sql`${mvpTitleLevel.standardVersionSlug}=(SELECT slug FROM mvp_standard_version WHERE status='published' ORDER BY published_at DESC NULLS LAST,created_at DESC LIMIT 1) AND COALESCE(${mvpTitleLevel.pathLabel},'')=''`);
     const trackLevelTitles = new Map(
       titleLevelRows.map(row => [`${row.trackSlug}:${row.levelOrder}`, row.name]),
     );
@@ -372,10 +396,10 @@ export class GrowthService {
 
     const levelRows = await this.db
       .select({ id: mvpTitleLevel.id, trackSlug: mvpTitleLevel.trackSlug, levelOrder: mvpTitleLevel.levelOrder })
-      .from(mvpTitleLevel);
+      .from(mvpTitleLevel).where(sql`${mvpTitleLevel.standardVersionSlug}=(SELECT slug FROM mvp_standard_version WHERE status='published' ORDER BY published_at DESC NULLS LAST,created_at DESC LIMIT 1) AND COALESCE(${mvpTitleLevel.pathLabel},'')=''`);
     const reqRows = await this.db
       .select({ titleLevelId: mvpTitleRequirement.titleLevelId, skillSlug: mvpTitleRequirement.skillSlug })
-      .from(mvpTitleRequirement);
+      .from(mvpTitleRequirement).where(eq(mvpTitleRequirement.isRequired,true));
     const reqsByLevel = new Map<string, string[]>();
     for (const row of reqRows) {
       const list = reqsByLevel.get(row.titleLevelId) ?? [];
@@ -481,170 +505,92 @@ export class GrowthService {
     return { events: limited, recentCertCount };
   }
 
-  async getGaps(): Promise<GapListResponse> {
-    const items: GapPoolItem[] = [];
-
-    if (currentEmployee().personnelRole === 'hr') {
-      const career = await this.getCareer();
-      const next = career.sequences[0]?.nodes.find(node => node.isNext);
-      for (const skill of next?.skills ?? []) {
-        if (skill.current >= skill.target) continue;
-        const gapLevels = skill.target - skill.current;
-        items.push({ source: 'career', sourceLabel: GAP_SOURCE_LABELS.career, title: skill.name,
-          description: `人力资源管理通道 · ${next?.title}要求`, filled: skill.current, target: skill.target,
-          levelRange: `L${skill.current} → L${skill.target}`, priority: gapLevels >= 3 ? 'p0' : gapLevels === 2 ? 'p1' : 'p2', gapLevels, competencies: [] });
-      }
-      return { items };
+  /** 同来源的同一技能合并，保留最高目标和最高优先级；不同来源保留各自依据。 */
+  private skillGapItems(items:GapPoolItem[]):GapPoolItem[]{
+    const unique=new Map<string,GapPoolItem>();
+    const order={p0:0,p1:1,p2:2};
+    for(const item of items){
+      const key=JSON.stringify([item.source,item.title.trim()]);
+      if(!item.title.trim()||item.target<=item.filled)continue;
+      const previous=unique.get(key);
+      if(!previous){unique.set(key,{...item,levelRange:`L${item.filled} → L${item.target}`});continue;}
+      const filled=Math.min(previous.filled,item.filled),target=Math.max(previous.target,item.target);
+      unique.set(key,{...(item.target>previous.target?item:previous),filled,target,gapLevels:target-filled,
+        levelRange:`L${filled} → L${target}`,priority:order[item.priority]<order[previous.priority]?item.priority:previous.priority});
     }
-
-    // 1) 职业下一节点：按技能拆条，每条带该技能在目标等级下的子能力要求。
-    try {
-      const overview = await this.judging.getOverview();
-      const preferred = overview.tracks.find(track => track.slug === overview.preferredTrack) ?? overview.tracks[0];
-      const next = preferred?.levels
-        .filter(level => level.state === 'preparing')
-        .sort((a, b) => (b.met / Math.max(1, b.total)) - (a.met / Math.max(1, a.total)))[0];
-      if (next) {
-        const pending = next.requirements.filter(item => !item.met);
-        const competenciesBySkill = await this.loadCompetencyRequirements(
-          pending.map(item => ({ skillSlug: item.skillSlug, level: item.requiredLevel })),
-        );
-        const categoryBySkill = await this.loadSkillCategories();
-        for (const item of pending) {
-          const gapLevels = Math.max(0, item.requiredLevel - item.currentLevel);
-          items.push({
-            source: 'career',
-            sourceLabel: GAP_SOURCE_LABELS.career,
-            title: item.skillName,
-            description: `${categoryBySkill.get(item.skillSlug) ?? '专业技能'} · ${next.levelName}要求`,
-            filled: item.currentLevel,
-            target: item.requiredLevel,
-            levelRange: `L${item.currentLevel} → L${item.requiredLevel}`,
-            priority: gapLevels >= 3 ? 'p0' : gapLevels === 2 ? 'p1' : 'p2',
-            gapLevels,
-            competencies: competenciesBySkill.get(item.skillSlug) ?? [],
-          });
-        }
-        // 优先级升序（P0 在前），同优先级按差距降序。
-        items.sort((a, b) => {
-          const order = { p0: 0, p1: 1, p2: 2 } as const;
-          if (order[a.priority] !== order[b.priority]) return order[a.priority] - order[b.priority];
-          return b.gapLevels - a.gapLevels;
-        });
-      }
-    } catch {
-      // 判定层不可用时仅返回旧 Gap 数据，不阻塞页面。
-    }
-
-    // 2) OKR 推导 / 当前岗位：仍读旧表记录，与职业 Gap 合并展示。
-    const rows = await this.db
-      .select()
-      .from(skillGap)
-      .where(
-        and(
-          eq(skillGap.employeeSlug, currentEmployee().employeeSlug),
-          inArray(skillGap.source, ['okr', 'current']),
-        ),
-      )
-      .orderBy(asc(skillGap.sort));
-
-    for (const row of rows) {
-      const source = toGapSource(row.source);
-      const filled = row.filled ?? 0;
-      const target = row.target ?? 0;
-      items.push({
-        source,
-        sourceLabel: GAP_SOURCE_LABELS[source],
-        title: row.title,
-        description: row.description ?? '',
-        filled,
-        target,
-        levelRange: row.levelRange ?? '',
-        priority: toGapPriority(row.priority),
-        gapLevels: Math.max(0, target - filled),
-        competencies: [],
-      });
-    }
-
-    return { items };
+    return [...unique.values()].sort((a,b)=>order[a.priority]-order[b.priority]||b.gapLevels-a.gapLevels);
   }
 
-  /**
-   * 针对 Gap 的行动建议：学习（课程/资源）、岗位实践、导师反馈并重，
-   * 每条都对应一个 Gap 技能并给出可验证交付方向。
-   */
-  async getGapActions(): Promise<GapActionsResponse> {
-    if (currentEmployee().personnelRole === 'hr') {
-      const career = await this.getCareer();
-      const next = career.sequences[0]?.nodes.find(node => node.isNext);
-      return { items: (next?.skills ?? []).filter(skill => skill.current < skill.target).map((skill, index) => ({
-        id: `hr-${next?.id}-${index}`, kind: 'practice' as const, badge: '岗位实践',
-        title: `完成一次「${skill.name}」实务案例`, gapTitle: `${next?.title} · ${skill.name}`,
-        detail: `结合人力资源业务形成方案、执行记录与复盘材料；当前 L${skill.current}，目标 L${skill.target}`,
-        effort: '4 周', actionLabel: '创建行动',
-      })) };
-    }
-    const overview = await this.judging.getOverview();
-    const preferred = overview.tracks.find(track => track.slug === overview.preferredTrack) ?? overview.tracks[0];
-    const next = preferred?.levels
-      .filter(level => level.state === 'preparing')
-      .sort((a, b) => (b.met / Math.max(1, b.total)) - (a.met / Math.max(1, a.total)))[0];
-    if (!next || next.met >= next.total) return { items: [] };
-
-    const detail = await this.judging.getGap(next.trackSlug, next.levelCode);
-    const items: GapAction[] = [];
-    const usedResourceSlugs = new Set<string>();
-    const kindMeta: Record<string, { kind: GapAction['kind']; badge: string; label: string }> = {
-      course: { kind: 'course', badge: '课程', label: '加入学习计划' },
-      training: { kind: 'resource', badge: '专项训练', label: '加入学习计划' },
-      project: { kind: 'practice', badge: '岗位实践', label: '创建行动' },
-    };
-
-    for (const gap of detail.gapItems) {
-      // 同一资源只推荐一次，避免多个 Gap 技能匹配到同一课程造成重复卡片。
-      const resource = gap.resources.find(item => !usedResourceSlugs.has(item.slug));
-      if (resource) {
-        usedResourceSlugs.add(resource.slug);
-        const meta = kindMeta[resource.kind] ?? kindMeta.course;
+  async getGaps(): Promise<GapListResponse> {
+    // 与页面职业路线共用岗位匹配、当前职级、下一站及有效认证，禁止从预置差距表兜底。
+    const career = await this.getCareer();
+    const route = career.sequences.find(sequence => sequence.key === career.preferredTrack);
+    if (!route) return { items: [] };
+    const current = route.nodes.filter(node => node.achieved).at(-1);
+    const next = route.nodes.find(node => node.isNext);
+    const categories = await this.loadSkillCategories();
+    const items: GapPoolItem[] = [];
+    for (const [source, node] of [['current', current], ['career', next]] as const) {
+      for (const requirement of node?.skills ?? []) {
+        if (requirement.isRequired === false || requirement.current >= requirement.target) continue;
+        const gapLevels = requirement.target - requirement.current;
         items.push({
-          id: `${detail.levelCode}-${gap.skillSlug}-${resource.slug}`,
-          kind: meta.kind,
-          badge: meta.badge,
-          title: resource.title,
-          gapTitle: `${detail.levelName} · ${gap.skillName}`,
-          detail: `对应 Gap：${gap.skillName}（当前 L${gap.currentLevel} · 要求 L${gap.requiredLevel}）`,
-          effort: resource.estimatedEffort ?? '',
-          actionLabel: meta.label,
-        });
-      } else {
-        const focus = gap.competencyNames.length > 0 ? gap.competencyNames[0] : gap.skillName;
-        items.push({
-          id: `${detail.levelCode}-${gap.skillSlug}-practice`,
-          kind: 'practice',
-          badge: '岗位实践',
-          title: `在实际项目中主导一次「${gap.skillName}」任务`,
-          gapTitle: `${detail.levelName} · ${gap.skillName}`,
-          detail: `围绕「${focus}」补齐 ${gap.gapLevels} 级，沉淀方案与结果作为认证证据`,
-          effort: '4-6 周',
-          actionLabel: '创建行动',
+          source, sourceLabel: GAP_SOURCE_LABELS[source], title: requirement.name,
+          description: `${categories.get(requirement.name) ?? '专业技能'} · ${route.label} · ${node?.title}要求`,
+          filled: requirement.current, target: requirement.target,
+          levelRange: `L${requirement.current} → L${requirement.target}`,
+          priority: gapLevels >= 3 ? 'p0' : gapLevels === 2 ? 'p1' : 'p2', gapLevels,
         });
       }
     }
+    // OKR 尚无目标技能映射，暂不展示模拟推导结果。
+    return { items: this.skillGapItems(items) };
+  }
 
-    if (detail.gapItems.length >= 2) {
-      const [first, second] = detail.gapItems;
+  /** 行动建议只对应同一份实时 Gap；学习资源必须明确关联到差距技能。 */
+  async getGapActions(): Promise<GapActionsResponse> {
+    const { items: gaps } = await this.getGaps();
+    if (!gaps.length) return { items: [] };
+    const resources = await this.db.execute<{
+      skill_name: string; slug: string; kind: string; title: string; estimated_effort: string | null;
+    }>(sql`
+      SELECT DISTINCT s.name AS skill_name,r.slug,r.kind,r.title,r.estimated_effort
+      FROM mvp_learning_resource r
+      JOIN mvp_skill_competency sc ON r.targets_competency_slugs @> jsonb_build_array(sc.competency_slug)
+      JOIN skill s ON s.slug=sc.skill_slug
+      WHERE r.status='active' AND s.name IN (${sql.join(gaps.map(gap => sql`${gap.title}`), sql`, `)})
+      ORDER BY r.slug`);
+    const usedResources = new Set<string>();
+    const uniqueGaps = new Map<string, GapPoolItem>();
+    for (const gap of gaps) {
+      const previous = uniqueGaps.get(gap.title);
+      if (!previous || gap.target > previous.target) uniqueGaps.set(gap.title, gap);
+    }
+    const items: GapAction[] = [];
+    for (const gap of uniqueGaps.values()) {
+      const resource = resources.find(item => item.skill_name === gap.title && !usedResources.has(item.slug));
+      if (resource) usedResources.add(resource.slug);
+      const kind = resource?.kind === 'course' ? 'course' : resource?.kind === 'training' ? 'resource' : 'practice';
       items.push({
-        id: `${detail.levelCode}-mentor`,
-        kind: 'mentor',
-        badge: '导师建议',
-        title: `与资深专家进行 1 次「${first.skillName}」方案拆解`,
-        gapTitle: `${detail.levelName}`,
-        detail: `重点反馈：${first.skillName}与${second.skillName}的边界识别、取舍依据与可验证交付标准`,
-        effort: '1 小时 · 每两周',
-        actionLabel: '查看导师',
+        id: `${gap.source}-${gap.title}-${resource?.slug ?? 'practice'}`,
+        kind, badge: kind === 'course' ? '课程' : kind === 'resource' ? '专项训练' : '岗位实践',
+        title: resource?.title ?? `在实际项目中完成一次「${gap.title}」任务`,
+        gapTitle: `${gap.title} · ${gap.sourceLabel}差距`,
+        detail: `${gap.description}；当前 L${gap.filled}，目标 L${gap.target}，需补齐 ${gap.gapLevels} 级并沉淀可验证成果`,
+        effort: resource?.estimated_effort ?? '4-6 周',
+        actionLabel: kind === 'practice' ? '创建行动' : '加入学习计划',
       });
     }
-
+    if (uniqueGaps.size >= 2) {
+      const [first, second] = [...uniqueGaps.values()];
+      items.push({
+        id: 'gap-mentor', kind: 'mentor', badge: '导师建议',
+        title: `与资深专家进行 1 次「${first.title}」方案拆解`,
+        gapTitle: `${first.title}、${second.title}`,
+        detail: `围绕当前差距讨论${first.title}与${second.title}的取舍依据与可验证交付标准`,
+        effort: '1 小时 · 每两周', actionLabel: '查看导师',
+      });
+    }
     return { items };
   }
 
@@ -732,37 +678,12 @@ export class GrowthService {
     };
   }
 
-  /** 技能在指定等级下的子能力要求（含名称与要求等级）。 */
-  private async loadCompetencyRequirements(
-    targets: { skillSlug: string; level: number }[],
-  ): Promise<Map<string, GapCompetency[]>> {
-    const result = new Map<string, GapCompetency[]>();
-    if (targets.length === 0) return result;
-    const rows = await this.db
-      .select({
-        skillSlug: mvpSkillCompetency.skillSlug,
-        level: mvpSkillCompetency.level,
-        name: mvpCompetency.name,
-        required: mvpSkillCompetency.requiredCompetencyLevel,
-      })
-      .from(mvpSkillCompetency)
-      .innerJoin(mvpCompetency, eq(mvpCompetency.slug, mvpSkillCompetency.competencySlug))
-      .where(inArray(mvpSkillCompetency.skillSlug, [...new Set(targets.map(item => item.skillSlug))]));
-    for (const row of rows) {
-      if (!targets.some(item => item.skillSlug === row.skillSlug && item.level === row.level)) continue;
-      const list = result.get(row.skillSlug) ?? [];
-      list.push({ name: row.name, level: row.required });
-      result.set(row.skillSlug, list);
-    }
-    return result;
-  }
-
   /** 技能 → 所属能力类目名（如 系统设计 / 组织管理），用于 Gap 条目描述。 */
   private async loadSkillCategories(): Promise<Map<string, string>> {
     const rows = await this.db
-      .select({ slug: skill.slug, category: skillCategory.name })
+      .select({ name: skill.name, category: skillCategory.name,kind:skillCategory.kind })
       .from(skill)
       .leftJoin(skillCategory, eq(skillCategory.slug, skill.categorySlug));
-    return new Map(rows.map(row => [row.slug, row.category ?? '专业技能']));
+    return new Map(rows.map(row => [row.name, `${row.kind==='generic'?'通用技能':'专业技能'}${row.category?` / ${row.category}`:''}`]));
   }
 }

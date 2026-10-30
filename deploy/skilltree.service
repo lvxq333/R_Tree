@@ -1,0 +1,25 @@
+[Unit]
+Description=Skilltree application
+After=network-online.target postgresql@16-main.service feishu-bridge.service
+Wants=network-online.target postgresql@16-main.service feishu-bridge.service
+
+[Service]
+User=skilltree
+Group=skilltree
+WorkingDirectory=/opt/skilltree
+EnvironmentFile=/etc/skilltree.env
+Environment=PATH=/opt/skilltree-node/bin:/usr/bin:/bin
+ExecStart=/opt/skilltree-node/bin/node dist/server/main.js
+Restart=on-failure
+RestartSec=4
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

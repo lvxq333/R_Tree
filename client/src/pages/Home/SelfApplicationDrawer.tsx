@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useCertifications } from './certification-context';
 import { getSkillTree } from '@/api/employee';
-import type { SkillNode } from '@shared/api.interface';
+import { getSkillStandard } from '@/api/assessment';
+import type { SkillNode, SkillAssessmentStandard } from '@shared/api.interface';
 
 const SELF_EVIDENCE_TYPES: string[] = ['培训考试', '项目成果', '文档或作品', '答辩结果'];
 
@@ -17,6 +18,9 @@ const SelfApplicationDrawer = ({ open, skillPreset }: SelfApplicationDrawerProps
   const [skills, setSkills] = useState<SkillNode[]>([]);
   const [skillSlug, setSkillSlug] = useState('');
   const [skillError, setSkillError] = useState('');
+  const [standard,setStandard]=useState<SkillAssessmentStandard|null>(null);
+  const [standardError,setStandardError]=useState('');
+  const [standardLoading,setStandardLoading]=useState(false);
   const [level, setLevel] = useState<string>('2');
   const [evidenceType, setEvidenceType] = useState<string>(SELF_EVIDENCE_TYPES[0]);
   const [evidenceTitle, setEvidenceTitle] = useState<string>('');
@@ -30,6 +34,7 @@ const SelfApplicationDrawer = ({ open, skillPreset }: SelfApplicationDrawerProps
   }, [certifiedLevel, level]);
 
   useEffect(() => {
+    if(!open)return;
     let active = true;
     getSkillTree().then(tree => {
       if (!active) return;
@@ -39,7 +44,7 @@ const SelfApplicationDrawer = ({ open, skillPreset }: SelfApplicationDrawerProps
       setSkillError('');
     }).catch(() => { if (active) setSkillError('技能目录加载失败，请刷新重试。'); });
     return () => { active = false; };
-  }, []);
+  }, [open]);
 
   useEffect(() => {
     if (!skillPreset || !skills.length) return;
@@ -52,11 +57,17 @@ const SelfApplicationDrawer = ({ open, skillPreset }: SelfApplicationDrawerProps
     panelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [open]);
 
+  useEffect(()=>{if(!open||!skillSlug)return;let active=true;setStandard(null);setStandardError('');setStandardLoading(true);
+    getSkillStandard(skillSlug).then(value=>{if(active)setStandard(value);}).catch(()=>{if(active)setStandardError('技能标准加载失败，请关闭后重试。');}).finally(()=>{if(active)setStandardLoading(false);});
+    return()=>{active=false;};
+  },[open,skillSlug]);
+  const standardReady=Boolean(standard)&&(!standard?.managed||Boolean(standard.configuredLevels?.includes(Number(level))));
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const selectedSkill = skills.find(entry => entry.slug === skillSlug);
-    if (!selectedSkill) return;
+    if (!selectedSkill||!standardReady) return;
     void submitSelfApplication({
+      standardHash:standard?.hash,
       skill: selectedSkill.name,
       skillSlug,
       level: Number(level),
@@ -95,6 +106,11 @@ const SelfApplicationDrawer = ({ open, skillPreset }: SelfApplicationDrawerProps
             <option value="5" disabled={certifiedLevel >= 5}>L5 · 专家</option>
           </select>
         </label>
+        <section className="form-wide anchor-section" aria-label="本次申请技能标准">
+          <h4>L{level} 申请标准</h4>
+          {standardLoading&&<p>正在读取技能标准…</p>}{standardError&&<p role="alert">{standardError}</p>}
+          {standard&&<><p><b>技能说明：</b>{standard.description||standard.name}</p>{standard.abilities.map(a=><div key={a.id}><b>{a.name}</b><p style={{whiteSpace:'pre-wrap'}}>{a.anchors[Number(level)-1]}</p>{a.evidenceRequirements?.[Number(level)-1]&&<p style={{whiteSpace:'pre-wrap'}}><b>证明材料要求：</b>{a.evidenceRequirements[Number(level)-1]}</p>}</div>)}<small>标准版本：{standard.version}；提交后保留此版本供审核核对。</small>{!standardReady&&<p role="alert">该等级标准尚未完整配置，请联系管理者补齐技能说明、达标标准和证明材料要求后再申请。</p>}</>}
+        </section>
         <label>
           <span>证明类型</span>
           <select id="self-evidence-type" value={evidenceType} onChange={(event) => setEvidenceType(event.target.value)}>
@@ -115,7 +131,7 @@ const SelfApplicationDrawer = ({ open, skillPreset }: SelfApplicationDrawerProps
         </label>
         <div className="form-actions form-wide">
           <span id="self-form-hint">{skillError || '提交后将由直属管理者或 HR 审批。'}</span>
-          <button type="submit" className="primary" disabled={!skillSlug || certifiedLevel >= 5}>提交点亮申请</button>
+          <button type="submit" className="primary" disabled={!skillSlug || certifiedLevel >= 5 || standardLoading || !standardReady}>提交点亮申请</button>
         </div>
       </form>
     </section>

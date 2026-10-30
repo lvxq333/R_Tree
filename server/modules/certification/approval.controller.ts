@@ -2,6 +2,8 @@ import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { NeedLogin } from '@server/platform/local-platform';
 import type {
   ApprovalItem,
+  ApprovalRemindResult,
+  ApprovalStats,
   ManagerReviewInput,
 } from '@shared/api.interface';
 import {
@@ -18,6 +20,27 @@ export class ApprovalController {
   @Get()
   async listApprovals(): Promise<ApprovalItem[]> {
     return this.approvalService.listApprovals();
+  }
+
+  /** 员工工作台「我的申请」：本人提交的审批单及其真实催办状态 */
+  @Get('mine')
+  async listMyApprovals(): Promise<ApprovalItem[]> {
+    return this.approvalService.listMyApprovals();
+  }
+
+  /** 催办：写入真实催办记录，限流与上限由服务端判定 */
+  @NeedLogin()
+  @Post(':slug/remind')
+  async remindApproval(
+    @Param('slug') slug: string,
+    @Body() input: { note?: string },
+  ): Promise<ApprovalRemindResult> {
+    return this.approvalService.remindApproval(slug, input?.note);
+  }
+
+  @Get('stats')
+  async getStats(): Promise<ApprovalStats> {
+    return this.approvalService.getStats();
   }
 
   @NeedLogin()

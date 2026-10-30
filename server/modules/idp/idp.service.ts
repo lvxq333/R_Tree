@@ -31,7 +31,9 @@ export class IdpService {
 
   async getOptions(): Promise<IdpOptions> {
     const overview = await this.judging.getOverview();
-    const track = overview.tracks.find(item => item.slug === overview.preferredTrack) ?? overview.tracks[0];
+    const user = currentEmployee();
+    const preferred = user.personnelRole === 'hr' ? 'hr' : overview.preferredTrack;
+    const track = overview.tracks.find(item => item.slug === preferred) ?? overview.tracks[0];
     const nextOrder = (overview.currentTitle?.levelOrder ?? 0) + 1;
     const target = track?.levels.find(item => item.levelOrder === nextOrder) ?? track?.levels.at(-1);
     const evidence = await this.db.execute(sql`SELECT slug,title FROM mvp_evidence WHERE owner_employee_slug=${currentEmployee().employeeSlug} ORDER BY uploaded_at DESC`);
@@ -53,7 +55,6 @@ export class IdpService {
   async generate(body: IdpGenerateRequest): Promise<IdpResponse> {
     if (!body || typeof body !== 'object') throw new BadRequestException('缺少生成参数');
     const track = text(body.track, '目标序列', 64), level = text(body.level, '目标职称', 16);
-    if (!['software','platform','ai'].includes(track)) throw new BadRequestException('请选择技术序列');
     const startMonth = text(body.startMonth, '开始月份', 7);
     if (!/^20\d{2}-(0[1-9]|1[0-2])$/.test(startMonth) || ![12,24,36].includes(body.months)) throw new BadRequestException('开始月份或周期无效');
     const [overview, target, extras, previous] = await Promise.all([this.judging.getOverview(), this.judging.getGap(track,level), this.extras(), this.getIdp()]);

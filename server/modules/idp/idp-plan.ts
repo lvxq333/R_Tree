@@ -22,7 +22,7 @@ export function buildIdp(input: IdpGenerateRequest, overview: JudgingOverview, t
     if (gap.target <= gap.filled || gaps.some(item => item.title === gap.title)) continue;
     gaps.push({ key: `${gap.source}:${gap.title}`, source: gap.sourceLabel, skillSlug: '', title: gap.title,
       priority: gap.priority.toUpperCase(), note: gap.levelRange || `L${gap.filled} → L${gap.target}`,
-      resources: [], competencies: gap.competencies.map(item => item.name), gapLevels: gap.gapLevels });
+      resources: [], competencies: [] as string[], gapLevels: gap.gapLevels });
   }
   gaps.sort((a, b) => a.priority.localeCompare(b.priority) || b.gapLevels - a.gapLevels);
   const tasks = gaps.length ? gaps : target.requirements.filter(item => item.met).map(item => ({

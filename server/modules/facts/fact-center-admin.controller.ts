@@ -93,7 +93,7 @@ export class FactCenterAdminController {
     }
     if ('jobGrade' in body) {
       const grade=optionalText(body.jobGrade,16,'职级');
-      if (grade && !['T1','T2','T3','T4'].includes(grade)) throw new BadRequestException('职级仅支持 T1–T4');
+      if (grade && !/^[TPMF][1-4]$/.test(grade)) throw new BadRequestException('职级需为T/P/M/F序列的1–4级');
       patch.jobGrade=grade;
     }
     if ('personnelRole' in body) {

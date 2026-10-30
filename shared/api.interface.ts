@@ -14,7 +14,7 @@ export interface AuthUser {
   org: string;
   position: string;
   department: string;
-  jobGrade: 'T1' | 'T2' | 'T3' | 'T4' | null;
+  jobGrade: `${'T' | 'P' | 'M' | 'F'}${1 | 2 | 3 | 4}` | null;
   personnelRole: 'employee' | 'hr' | 'expert';
 }
 export interface RegisterInput { username: string; password: string; name: string; org?: string; position?: string; hireDate?: string }
@@ -87,12 +87,23 @@ export interface ManagerDashboardResponse {
   filters: { roles: string[]; grades: string[] };
   scope: { employeeCount: number; standardEmployeeCount: number; requirementCount: number; metCount: number;
     p0GapCount: number; planCount: number; completedActionCount: number; actionCount: number };
-  heat: { skillSlug: string; name: string; grades: { grade: string; demand: number; met: number }[] }[];
+  // heat：技能等级供给变化。threshold = 该职级标准对该技能要求的等级（null 表示该职级不要求此技能）
+  // met/pastMet = 现在 / 30 天前技能等级达到该门槛的人数；gained/lost = 期间新增达标 / 达标失效人数
+  heat: { skillSlug: string; name: string;
+    grades: { grade: string; threshold: number | null; met: number; pastMet: number; gained: number; lost: number }[] }[];
   risks: { kind: 'gap' | 'expiry' | 'standard'; severity: 'high' | 'medium'; title: string; detail: string;
-    employeeSlug?: string }[];
+    employeeSlug?: string;
+    employees?: { slug: string; name: string; grade: string | null; role: string | null; note: string }[] }[];
   members: { employeeSlug: string; name: string; role: string; grade: string | null; target: string;
     p0Gaps: number; progress: number | null; nextCheckin: string | null }[];
   calculatedAt: string;
+}
+// 热力图单元格明细：某技能 × 某职级门槛下的达标成员名单（权限口径与 manager-overview 一致）
+export interface HeatDetailResponse {
+  skillSlug: string; skillName: string; grade: string; threshold: number | null;
+  met: number; gained: number;
+  employees: { slug: string; name: string; grade: string | null; department: string | null; role: string | null;
+    level: number; certifiedAt: string | null; gained: boolean }[];
 }
 export type GapSource = 'career' | 'okr' | 'current' | 'profile';
 
@@ -100,6 +111,7 @@ export interface AbilityStandard {
   id: string;
   name: string;
   anchors: string[]; // L1~L5，按数组顺序
+  evidenceRequirements?: string[];
 }
 export interface SkillAssessmentStandard {
   skillSlug: string;
@@ -107,6 +119,9 @@ export interface SkillAssessmentStandard {
   version: string;
   hash: string;
   abilities: AbilityStandard[];
+  description?: string;
+  managed?: boolean;
+  configuredLevels?: number[];
 }
 export interface AssessmentCitation { factId: string; version: number; quote: string }
 export interface AbilityAssessment {
@@ -345,6 +360,7 @@ export interface CertificationItem {
 }
 
 export interface SelfApplicationInput {
+  standardHash?: string;
   skill: string;
   skillSlug: string;
   level: number;
@@ -355,6 +371,16 @@ export interface SelfApplicationInput {
 }
 
 /* ========== 审批 ========== */
+/** 催办状态：次数、最近一次时间、当前账号能否催办与不可催办的原因，全部由后端判定 */
+export interface ApprovalReminderState {
+  count: number;
+  /** 最近一次催办时间（已格式化，如 10-23 15:20） */
+  lastAt: string | null;
+  canRemind: boolean;
+  /** 不可催办的真实业务原因，前端直接展示 */
+  reason: string | null;
+}
+
 export interface ApprovalItem {
   id: string;
   linkedId: string | null;
@@ -368,9 +394,28 @@ export interface ApprovalItem {
   sourceLabel: string;
   submittedAt: string;
   due: string;
+  /** 队列状态标记，业务判定全部在后端完成：processed=已处理（status 非 pending）；overdue=待处理但已过 SLA 期限；active=处理中未逾期 */
+  dueState: 'active' | 'overdue' | 'processed';
   status: ApprovalStatus;
   detail: string | null;
   employeeResponse: string | null;
+  evidence: CertificationEvidence[];
+  anchor: string | null;
+  reminder: ApprovalReminderState;
+}
+
+/** 催办结果：写入催办记录后的最新审批单状态 */
+export interface ApprovalRemindResult {
+  approval: ApprovalItem;
+  /** 本次催办已送达的审批人范围说明（后端按可见范围计算） */
+  deliveredTo: string;
+}
+
+/** 审批工作台顶部统计（后端按当前账号可见范围实时计算） */
+export interface ApprovalStats {
+  pending: number;
+  downgrade: number;
+  processedThisMonth: number;
 }
 
 export interface ManagerReviewInput {
@@ -384,6 +429,9 @@ export interface ManagerReviewInput {
 
 /* ========== 成长概览 ========== */
 export interface CareerNodeSkill {
+  /** 有效技能认证的实际等级；未认证时不提供，不以职称覆盖或基线代替。 */
+  certifiedLevel?: number;
+  isRequired?: boolean;
   name: string;
   current: number;
   target: number;
@@ -407,6 +455,7 @@ export interface CareerNode {
 }
 
 export interface CareerSequenceView {
+  family?: JobFamily;
   key: string;
   label: string;
   description: string;
@@ -438,12 +487,6 @@ export interface GrowthEventsResponse {
   recentCertCount: number;
 }
 
-/** Gap 条目下的一条子能力要求（技能在该等级下的可评估子能力） */
-export interface GapCompetency {
-  name: string;
-  level: number;
-}
-
 export interface GapPoolItem {
   source: GapSource;
   sourceLabel: string;
@@ -455,8 +498,6 @@ export interface GapPoolItem {
   priority: 'p0' | 'p1' | 'p2';
   /** 距目标的等级差 */
   gapLevels: number;
-  /** 该技能在目标等级下的子能力要求明细 */
-  competencies: GapCompetency[];
 }
 
 export interface GapListResponse {
@@ -572,6 +613,32 @@ export interface IdpResponse {
 }
 
 /* ========== 人才候选与清单 ========== */
+export interface TalentSkillCondition { skillSlug: string; level: number }
+export interface TalentCriteria {
+  title: string;
+  required: TalentSkillCondition[];
+  bonus: TalentSkillCondition[];
+  keywords: string[];
+  minimumAvailability: number | null;
+  startMonth: string;
+}
+export interface TalentSkillMatch {
+  skillSlug: string; name: string; requiredLevel: number; currentLevel: number; met: boolean;
+}
+export interface TalentWorkspace {
+  prompt: string; criteria: TalentCriteria; revision: number; updatedAt: string | null;
+}
+export interface TalentCatalog {
+  skills: { slug: string; name: string }[];
+  departments: string[];
+  scopeLabel: string;
+  aiAvailable: boolean;
+}
+export interface TalentParseResponse { criteria: TalentCriteria; warnings: string[]; model: string }
+export interface TalentSearchInput { criteria: TalentCriteria; departments: string[]; availabilityOnly: boolean; keyword: string }
+export interface TalentSearchResponse extends TalentCandidatesResponse {
+  searchedCount: number; calculatedAt: string;
+}
 export interface TalentCandidate {
   id: string;
   name: string;
@@ -587,6 +654,12 @@ export interface TalentCandidate {
   availability: string;
   freshness: string;
   dimensions: [string, number][];
+  requiredMatches?: TalentSkillMatch[];
+  bonusMatches?: TalentSkillMatch[];
+  projects?: { title: string; verification: string }[];
+  matchedKeywords?: string[];
+  availabilityPercent?: number | null;
+  isDemo?: boolean;
 }
 
 export interface TalentCandidatesResponse {
@@ -600,41 +673,194 @@ export interface ShortlistResponse {
 }
 
 /* ========== 梯队与继任 ========== */
-export interface SuccessorPerson {
+export type Criticality = 'core' | 'key' | 'normal';
+/** 关键岗位名录项：HR 手工指定，决定盘点对象。 */
+export interface KeyPositionRecord {
+  trackSlug: string;
+  levelCode: string;
+  criticality: Criticality;
+  reason: string;
+  impact: string;
+}
+export interface KeyPositionCatalogLevel {
+  code: string;
+  name: string;
+  order: number;
+  holders: number;
+  selected: boolean;
+  criticality: Criticality;
+  reason: string;
+  impact: string;
+}
+export interface KeyPositionCatalogTrack {
+  slug: string;
+  name: string;
+  family: 'T' | 'P' | 'F' | 'M';
+  levels: KeyPositionCatalogLevel[];
+}
+export interface KeyPositionCatalog {
+  tracks: KeyPositionCatalogTrack[];
+  updatedAt: string;
+}
+export interface KeyPositionSaveInput {
+  positions: KeyPositionRecord[];
+}
+export interface SuccessionRequirementView {
+  skillName: string;
+  requiredLevel: number;
+  /** 盘点范围内已达标该要求的人数。 */
+  metCount: number;
+}
+export interface SuccessionGapView {
+  skillName: string;
+  current: number;
+  required: number;
+}
+export interface SuccessionCandidateView {
+  employeeId: string;
   name: string;
   avatar: string;
   tone: string;
+  grade: string;
+  trackName: string;
+  department: string;
   role: string;
-  gap: string;
-  state: string;
-  stateClass: string;
-  employeeId: string | null;
+  /** 已达标项数 / 必备项数。 */
+  met: number;
+  total: number;
+  /** 逐项达标率（0–100），决定分桶。 */
+  readiness: number;
+  /** 加权接近度 Σmin(现有,要求)/Σ要求（0–100），仅作参考，不影响分桶。 */
+  weighted: number;
+  state: 'ready' | 'developing' | 'watch';
+  stateText: string;
+  gaps: SuccessionGapView[];
+  gapText: string;
 }
-
-export interface SuccessionRole {
-  id: string;
+export interface SuccessionIncumbentView {
+  employeeId: string;
+  name: string;
+  avatar: string;
+  tone: string;
+  department: string;
+  grade: string;
+  tenure: string;
+}
+export interface SuccessionPositionView {
+  slug: string;
+  trackSlug: string;
+  trackName: string;
+  family: 'T' | 'P' | 'F' | 'M';
+  levelCode: string;
+  levelName: string;
   title: string;
-  family: string;
-  incumbent: string;
+  criticality: Criticality;
+  criticalityText: string;
+  reason: string;
+  impact: string;
+  vacancy: boolean;
+  incumbents: SuccessionIncumbentView[];
+  incumbentLabel: string;
   incumbentMeta: string;
-  immediate: number;
-  developing: number;
-  health: string;
+  requirements: SuccessionRequirementView[];
+  ready: SuccessionCandidateView[];
+  developing: SuccessionCandidateView[];
+  watch: SuccessionCandidateView[];
+  health: 'healthy' | 'attention' | 'risk' | 'unrated';
   healthText: string;
-  summary: string;
-  risk: string;
-  ready: SuccessorPerson[];
-  pipeline: SuccessorPerson[];
+  riskNote: string;
+  /** 该岗位的候选池人数（已按职级规则筛选）。 */
+  poolSize: number;
 }
-
-export interface SuccessionResponse {
-  roles: SuccessionRole[];
+export interface SuccessionOverview {
+  positions: SuccessionPositionView[];
+  summary: {
+    keyPositions: number;
+    healthy: number;
+    attention: number;
+    risk: number;
+    unrated: number;
+    readyCount: number;
+    developingCount: number;
+    covered: number;
+  };
+  filters: {
+    departments: string[];
+    tracks: { slug: string; name: string }[];
+    levels: string[];
+  };
+  updatedAt: string;
 }
 
 /* ========== 项目组队 ========== */
 export interface TeamRoleSkill {
-  name: string;
+  /** 技能目录 slug */
+  skillSlug: string;
+  /** 需要的认证等级 L1~L5 */
+  level: number;
   type: 'required' | 'bonus';
+  /** 目录展示名（服务端解析） */
+  name: string;
+}
+
+/** 服务端按真实认证技能计算出的角色候选推荐 */
+export interface TeamCandidateOption {
+  candidateSlug: string;
+  name: string;
+  avatar: string;
+  avatarTone: string;
+  org: string;
+  roleTitle: string;
+  requiredMet: number;
+  requiredTotal: number;
+  bonusMet: number;
+  bonusTotal: number;
+  score: number;
+  tier: 'direct' | 'adjacent' | 'potential';
+  /** 命中的认证技能（含等级），必需在前 */
+  evidence: string[];
+  availabilityText: string;
+  availabilityPercent: number | null;
+  assignedHere: boolean;
+  /** 已被本方案其他角色占用时的角色名 */
+  assignedElsewhere: string | null;
+  /** 可投入比例低于角色要求 */
+  insufficient: boolean;
+  declinedPreviously: boolean;
+  recentParticipations: TeamRecentParticipation[];
+}
+
+export interface TeamRecentParticipation {
+  projectTitle: string;
+  roleTitle: string;
+  status: TeamStatus;
+  response: TeamAssignmentResponseState;
+  recordedAt: string;
+}
+
+export interface TeamHistoryRecord {
+  id: string;
+  event: string;
+  actorName: string;
+  description: string;
+  createdAt: string;
+  snapshot: {
+    title: string;
+    status: TeamStatus;
+    roles: { title: string; headcount: number; allocation: string }[];
+    members: { roleTitle: string; candidateSlug: string; name: string; response: TeamAssignmentResponseState; note: string | null; source: 'mock' | 'employee' | 'feishu' }[];
+  };
+}
+
+export interface TeamCoordinationNotification {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  recipientName: string;
+  event: 'invite' | 'response';
+  decision: 'accepted' | 'rejected' | null;
+  state: 'retained' | 'withdrawn';
 }
 
 export interface TeamRole {
@@ -643,7 +869,51 @@ export interface TeamRole {
   headcount: number;
   allocation: string;
   skills: TeamRoleSkill[];
-  candidates: string[];
+  /** 服务端计算的真实候选推荐，按匹配度排序 */
+  recommendations: TeamCandidateOption[];
+  members: TeamCandidateOption[];
+}
+
+/** 方案状态：draft 草稿 / confirming 协调确认中 / adjusting 有成员拒绝待调整 / confirmed 全员接受 */
+export type TeamStatus = 'draft' | 'confirming' | 'adjusting' | 'confirmed';
+
+/** 成员对组队邀请的响应状态 */
+export type TeamAssignmentResponseState = 'pending' | 'accepted' | 'rejected';
+
+export interface TeamConflictItem {
+  kind: 'multi-role' | 'insufficient-availability';
+  candidateSlug: string;
+  name: string;
+  detail: string;
+}
+
+export interface TeamResponseNotification {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  action: 'accepted' | 'rejected';
+  candidateSlug: string;
+  source: 'mock' | 'employee' | 'feishu';
+  channel: 'feishu-mock' | 'feishu' | 'in-app';
+}
+
+export interface TeamArchiveResponse {
+  projects: TeamProjectSummary[];
+  notifications: (TeamCoordinationNotification & { projectSlug: string; projectTitle: string })[];
+}
+
+export interface TeamCandidateSearchResponse {
+  candidates: TeamCandidateOption[];
+  total: number;
+}
+
+export interface MockTeamResponseInput {
+  project: string;
+  roleSlug: string;
+  candidateSlug: string;
+  action: 'accept' | 'reject';
+  note?: string;
 }
 
 export interface TeamProjectView {
@@ -651,19 +921,90 @@ export interface TeamProjectView {
   title: string;
   period: string;
   note: string;
+  status: TeamStatus;
+  updatedAt: string | null;
+  /** 方案归属部门（创建时手选，跨部门不可见） */
+  department: string;
+  creatorSlug: string;
+  creatorName: string;
   roles: TeamRole[];
-  assignments: { [roleSlug: string]: string };
+  assignments: { [roleSlug: string]: string[] };
+  /** 各角色中每位成员对邀请的响应状态，以员工 slug 索引 */
+  responses: { [roleSlug: string]: { [candidateSlug: string]: { state: TeamAssignmentResponseState; respondedAt: string | null; note: string | null; source: 'mock' | 'employee' | 'feishu' } } };
+  /** 按需求人数计算必需技能覆盖（未配置名额按 0 计） */
+  skillCoverage: number;
+  conflicts: TeamConflictItem[];
+  /** 已配置成员中投入比例未登记的人数 */
+  pendingAvailabilityCount: number;
+  mockResponsesEnabled: boolean;
+  responseNotifications: TeamResponseNotification[];
+  history: TeamHistoryRecord[];
+  coordinationNotifications: TeamCoordinationNotification[];
+}
+
+/** 方案列表摘要（可见范围：本部门方案 + 本人创建的方案；HR 可见全部） */
+export interface TeamProjectSummary {
+  slug: string;
+  title: string;
+  status: TeamStatus;
+  department: string;
+  creatorName: string;
+  roleCount: number;
+  updatedAt: string | null;
 }
 
 export interface TeamResponse {
   project: TeamProjectView;
+  projects: TeamProjectSummary[];
+}
+
+/** 员工组队邀请及已响应结果（首页横幅用） */
+export interface TeamInviteItem {
+  id: string;
+  projectSlug: string;
+  projectTitle: string;
+  roleSlug: string;
+  roleTitle: string;
+  creatorName: string;
+  createdAt: string;
+  state: TeamAssignmentResponseState;
+  note: string | null;
+  source: 'mock' | 'employee' | 'feishu';
+}
+
+export interface CreateTeamProjectInput {
+  title: string;
+  department: string;
+  note?: string;
+}
+
+export interface TeamRoleSkillInput {
+  skillSlug: string;
+  level: number;
+  type: 'required' | 'bonus';
 }
 
 export interface CreateTeamRoleInput {
   title: string;
   allocation: string;
-  skills: TeamRoleSkill[];
-  candidates: string[];
+  headcount: number;
+  skills: TeamRoleSkillInput[];
+}
+
+export interface UpdateTeamRoleInput extends CreateTeamRoleInput {}
+
+export interface TeamStatusInput {
+  action: 'confirm' | 'reopen';
+  /** 目标方案 slug；缺省时取最近更新的可见方案 */
+  project?: string;
+}
+
+/** 员工对组队邀请的响应输入 */
+export interface TeamRespondInput {
+  roleSlug: string;
+  project?: string;
+  action: 'accept' | 'reject';
+  note?: string;
 }
 
 /* ========== 判断层（M2）：资格 / 进度 / Gap ========== */
@@ -679,6 +1020,7 @@ export interface JudgingBlocker {
 }
 
 export interface JudgingRequirement {
+  isRequired?: boolean;
   skillSlug: string;
   skillName: string;
   requiredLevel: number;
@@ -708,13 +1050,30 @@ export interface JudgingLevelView {
   requirements: JudgingRequirement[];
 }
 
+/** 发展管道：职称序列的上层分组，选择目标时的第一级 */
+export type TitlePipeline = 'tech' | 'management';
+
+/** 管道顺序与展示名，服务端分组与前端选择器共用同一口径 */
+export const TITLE_PIPELINES: { slug: TitlePipeline; name: string }[] = [
+  { slug: 'tech', name: '技术管道' },
+  { slug: 'management', name: '管理管道' },
+];
+
+export interface JudgingTrackView {
+  slug: string;
+  name: string;
+  /** 所属发展管道；老数据缺省时前端按 TECH_TRACKS 兜底归入技术管道 */
+  pipeline: TitlePipeline;
+  levels: JudgingLevelView[];
+}
+
 export interface JudgingOverview {
   employeeSlug: string;
   /** 当前持有的最高职称；无职称为 null */
   currentTitle: { trackSlug: string; levelOrder: number; levelCode: string; levelName: string } | null;
   /** 按部门与岗位推断的所属序列，用于默认选中与候选去重；无法判断时为 null */
   preferredTrack: string | null;
-  tracks: { slug: string; name: string; levels: JudgingLevelView[] }[];
+  tracks: JudgingTrackView[];
 }
 
 export interface JudgingResource {
@@ -782,3 +1141,34 @@ export interface IdpActionUpdate {
 export interface IdpAlignmentRequest { revision: number; date: string; participant: string; note: string; }
 export interface IdpRevision { revision: number; reason: string; createdAt: string; }
 export interface IdpLiveReview { readiness: number; met: number; total: number; gaps: string[]; changed: boolean; }
+
+// 岗位管理复用职称标准：序列 → 方向 → T1–T4 → L1–L5 技能要求。
+export type JobFamily = 'T' | 'P' | 'F' | 'M';
+export interface PositionSkillRequirement { skillName: string; requiredLevel: number; isRequired?: boolean; standard?: PositionSkillStandard }
+export interface PositionGrade { code: string; name: string; requirements: PositionSkillRequirement[] }
+export interface PositionDirection {
+  slug: string; family: JobFamily; name: string; revision: string; grades: PositionGrade[];
+}
+export interface PositionCatalog {
+  skillStandards: Record<string, PositionSkillStandard>;
+  directions: PositionDirection[]; skills: string[]; standardVersion: string; revision: string; canEdit: boolean;
+}
+export interface PositionInput { family: JobFamily; name: string; revision?: string; grades: PositionGrade[] }
+export interface PositionImportRow {
+  family: JobFamily; direction: string; grade: string; skillName: string; requiredLevel: number;
+  skillDescription?: string; levelDescription?: string; evidenceRequirements?: string;
+  isRequired?: boolean;
+  standard?: PositionSkillStandard;
+}
+export interface PositionImportPreview { rows: PositionImportRow[]; errors: string[] }
+
+export interface SkillLevelStandard { level: number; anchor: string; evidence: string }
+export interface PositionSkillStandard {
+  description: string; levels: SkillLevelStandard[]; revision: string;
+}
+
+export interface FeishuIntegrationStatus {
+  enabled: boolean;
+  linked: boolean;
+  deliveries: { id: string; title: string; state: string; error: string | null; sent: boolean; result: string | null; decision: string | null; updatedAt: string }[];
+}

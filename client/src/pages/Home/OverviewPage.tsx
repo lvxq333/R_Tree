@@ -13,17 +13,17 @@ import type {
   GrowthEventsResponse,
   SkillGrowthEvent,
 } from '@shared/api.interface';
+import { JOB_FAMILIES } from '@shared/position-validation';
+import type { JobFamily } from '@shared/api.interface';
+import './career-route.css';
+import './gap-pool.css';
 import { useUI } from './ui-context';
 import { useEmployeeWorkspace } from './employee-workspace-context';
 import {
   COMMON_SKILL_NAMES,
-  SEQUENCE_LABELS,
-  SEQUENCE_OPTIONS,
   buildGrowthChart,
-  type ChannelKey,
   type GapFilterKey,
   type GrowthRangeKey,
-  type SequenceKey,
 } from './overview-data';
 
 const GROWTH_CHART_LEFT = 58;
@@ -131,8 +131,9 @@ const OverviewPage = () => {
   const [abilityStructure, setAbilityStructure] = useState<AbilityStructureResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // 功能统一：初始通道不按登录角色定制，加载后由接口返回的偏好序列（preferredTrack）决定
-  const [channel, setChannel] = useState<ChannelKey>('tech');
-  const [sequence, setSequence] = useState<SequenceKey>('software');
+  const [family, setFamily] = useState<JobFamily>('T');
+  const [directionSearch,setDirectionSearch]=useState('');
+  const [sequence, setSequence] = useState<string>('');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('middle');
   const [sequenceMenuOpen, setSequenceMenuOpen] = useState<boolean>(false);
   const [gapFilter, setGapFilter] = useState<GapFilterKey>('all');
@@ -163,23 +164,11 @@ const OverviewPage = () => {
       .then((res) => {
         if (!cancelled) {
           setSequences(res.sequences);
-          if (res.preferredTrack === 'management') setChannel('management');
-          else setChannel('tech');
-          // 默认聚焦偏好序列的「推荐下一站」节点；偏好序列已全部达成时聚焦其最后一站，
-          // 不再跳到其他序列——职业路线默认视图始终跟随员工自己的序列。
-          const flattened = res.sequences.flatMap(sequence => sequence.nodes.map(node => ({ sequenceKey: sequence.key, node })));
-          const preferredNodes = res.preferredTrack
-            ? flattened.filter(item => item.sequenceKey === res.preferredTrack)
-            : [];
-          const entry = preferredNodes.find(item => item.node.isNext)
-            ?? preferredNodes.at(-1)
-            ?? flattened.find(item => item.node.isNext);
-          if (entry) {
-            if (['software', 'platform', 'ai'].includes(entry.sequenceKey)) {
-              setSequence(entry.sequenceKey as SequenceKey);
-            }
-            setSelectedNodeId(entry.node.id);
-          }
+          const preferred=res.sequences.find(s=>s.key===res.preferredTrack);
+          setSequence(preferred?.key??'');
+          if(preferred?.family)setFamily(preferred.family);
+          const node=preferred?.nodes.find(n=>n.isNext)??preferred?.nodes.at(-1);
+          setSelectedNodeId(node?.id??'');
         }
       })
       .catch((error: unknown) => {
@@ -296,14 +285,9 @@ const OverviewPage = () => {
   const sequenceByKey = new Map<string, CareerSequenceView>(
     sequences.map((item: CareerSequenceView): [string, CareerSequenceView] => [item.key, item]),
   );
-  const nodesFor = (targetChannel: ChannelKey, targetSequence: SequenceKey): CareerNode[] =>
-    targetChannel === 'tech'
-      ? (sequenceByKey.get(targetSequence)?.nodes ?? [])
-      : (sequenceByKey.get('management')?.nodes ?? []);
-  const careerNodes: CareerNode[] = nodesFor(channel, sequence);
-  const selectedNode = careerNodes.find((node) => node.id === selectedNodeId)
-    ?? careerNodes[1]
-    ?? careerNodes[0];
+  const careerNodes: CareerNode[] = sequenceByKey.get(sequence)?.nodes??[];
+  const selectedNode = careerNodes.find(node=>node.id===selectedNodeId)??careerNodes.find(n=>n.isNext)??careerNodes.at(-1);
+  const filteredDirections=sequences.filter(s=>s.family===family&&s.label.toLowerCase().includes(directionSearch.trim().toLowerCase()));
   const gapCounts: Record<GapFilterKey, number> = {
     all: gapItems.length,
     career: gapItems.filter((item: GapPoolItem) => item.source === 'career').length,
@@ -319,20 +303,16 @@ const OverviewPage = () => {
   const selectedEvent = selectedPoint?.event;
   const selectedOrdinal = selectedPoint?.ordinal;
 
-  const handleChannelChange = (next: ChannelKey): void => {
-    setChannel(next);
-    const nodes = nodesFor(next, sequence);
-    // 切换通道/序列后聚焦该序列的「推荐下一站」，无未达成层时聚焦最后一站。
-    const nextNode = nodes.find((node) => node.isNext) ?? nodes[nodes.length - 1];
-    if (nextNode) setSelectedNodeId(nextNode.id);
+  const handleSequenceSelect = (key: string): void => {
+    setSequence(key);setSequenceMenuOpen(false);setDirectionSearch('');
+    const nodes=sequenceByKey.get(key)?.nodes??[];
+    setSelectedNodeId((nodes.find(n=>n.isNext)??nodes.at(-1))?.id??'');
   };
-
-  const handleSequenceSelect = (key: SequenceKey): void => {
-    setSequence(key);
-    setSequenceMenuOpen(false);
-    const nodes = nodesFor('tech', key);
-    const nextNode = nodes.find((node) => node.isNext) ?? nodes[nodes.length - 1];
-    if (nextNode) setSelectedNodeId(nextNode.id);
+  const handleFamilyChange=(value:JobFamily)=>{
+    setFamily(value);setDirectionSearch('');setSequenceMenuOpen(true);
+    const first=sequences.find(s=>s.family===value);
+    setSequence(first?.key??'');
+    setSelectedNodeId((first?.nodes.find(n=>n.isNext)??first?.nodes.at(-1))?.id??'');
   };
 
   const handleGrowthPointKeyDown = (event: React.KeyboardEvent<SVGGElement>, ordinal: number): void => {
@@ -393,25 +373,16 @@ const OverviewPage = () => {
 
       <section className="panel career-panel">
         <div className="section-head">
-          <div><h3>职业发展路线</h3><p>统一岗位能力要求与当前员工的有效认证等级对照</p></div>
-          <div className="career-controls">
-            <div className={`sequence-picker ${channel === 'tech' ? '' : 'hidden'}`} ref={pickerRef}>
-              <button className="sequence-trigger" aria-expanded={sequenceMenuOpen} aria-controls="sequence-menu" onClick={() => setSequenceMenuOpen((open) => !open)}>
-                <span>{SEQUENCE_LABELS[sequence]}</span><i>⌄</i>
-              </button>
-              {sequenceMenuOpen && (
-                <div className="sequence-menu" id="sequence-menu">
-                  {SEQUENCE_OPTIONS.map((option) => (
-                    <button key={option.key} className={option.key === sequence ? 'active' : ''} onClick={() => handleSequenceSelect(option.key)}>
-                      <b>{SEQUENCE_LABELS[option.key]}</b><small>{option.description}</small>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="channel-switch">
-              <button className={channel === 'tech' ? 'active' : ''} onClick={() => handleChannelChange('tech')}>技术序列</button>
-              <button className={channel === 'management' ? 'active' : ''} onClick={() => handleChannelChange('management')}>管理通道</button>
+          <div><h3>职业发展路线</h3><p>默认展示入职岗位对应路线；切换仅用于浏览，不影响Gap池</p></div>
+          <div className="career-controls" ref={pickerRef}>
+            <label className="career-family">序列<select aria-label="职业路线序列" value={family} onChange={e=>handleFamilyChange(e.target.value as JobFamily)}>{JOB_FAMILIES.map(f=><option key={f.code} value={f.code}>{f.name}{f.code}</option>)}</select></label>
+            <div className="sequence-picker">
+              <button className="sequence-trigger" aria-expanded={sequenceMenuOpen} aria-controls="sequence-menu" onClick={()=>setSequenceMenuOpen(open=>!open)}><span>{sequenceByKey.get(sequence)?.label??'选择岗位方向'}</span><i>⌄</i></button>
+              {sequenceMenuOpen&&<div className="sequence-menu career-direction-menu" id="sequence-menu">
+                <input autoFocus aria-label="搜索职业路线方向" placeholder="输入关键词搜索方向" value={directionSearch} onChange={e=>setDirectionSearch(e.target.value)}/>
+                <div role="listbox" aria-label="岗位发展方向">{filteredDirections.map(option=><button role="option" aria-selected={option.key===sequence} key={option.key} className={option.key===sequence?'active':''} onClick={()=>handleSequenceSelect(option.key)}><b>{option.label}</b><small>{option.nodes.length} 个职级</small></button>)}</div>
+                {!filteredDirections.length&&<p role="status">{sequences.some(s=>s.family===family)?'没有匹配的岗位方向':'该序列暂无可用方向'}</p>}
+              </div>}
             </div>
           </div>
         </div>
@@ -422,7 +393,7 @@ const OverviewPage = () => {
             if (node.achieved) classes.push('reached');
             if (node.achieved && (node.meta === '当前岗位' || node.meta === '当前职级')) classes.push('current');
             if (node.isNext && !node.achieved) classes.push('next-stop');
-            if (node.id === selectedNode.id) classes.push('selected');
+            if (node.id === selectedNode?.id) classes.push('selected');
             return (
               <button key={node.id} className={classes.join(' ')} onClick={() => setSelectedNodeId(node.id)}>
                 <span className="node-orb">{node.code}</span><b>{node.title}</b><small>{node.meta}</small>
@@ -430,7 +401,7 @@ const OverviewPage = () => {
             );
           })}
         </div>
-        <div className="node-detail">
+        {selectedNode?<div className="node-detail">
           <div className="node-summary">
             <span>{selectedNode.state}</span>
             <h4>{selectedNode.title}</h4>
@@ -440,57 +411,46 @@ const OverviewPage = () => {
           </div>
           <div className="node-skills">
             {selectedNode.skills.map((skill: CareerNodeSkill) => {
-              const met = skill.current >= skill.target;
+              const certifiedLevel=skill.certifiedLevel;
+              const hasCertification=certifiedLevel!==undefined&&certifiedLevel>0;
+              const met=hasCertification&&certifiedLevel>=skill.target;
               const category = COMMON_SKILL_NAMES.has(skill.name) ? '通用技能' : '专业技能';
-              const sourceText = skill.source === 'title-covered'
-                ? ' · 职称覆盖'
-                : skill.source === 'skill-covered'
-                  ? ' · 认证覆盖'
-                  : skill.source === 'title-baseline'
-                    ? ' · 职称基线'
-                    : '';
               return (
                 <div key={skill.name} className={`node-skill ${met ? 'met' : ''}`}>
-                  <div><b>{skill.name}</b><small>{category} · 当前 L{skill.current}{sourceText} · 要求 L{skill.target}</small></div>
-                  <span>{met ? '已满足' : `Gap ${skill.target - skill.current} 级`}</span>
+                  <div><b>{skill.name}</b><small>{skill.isRequired===false?'推荐技能':category} · {hasCertification?<>当前 L{certifiedLevel} · </>:'未认证 · '}要求 L{skill.target}</small></div>
+                  <span>{met?'已满足':skill.isRequired===false?'建议提升':`Gap ${skill.target-(certifiedLevel??0)} 级`}</span>
                 </div>
               );
             })}
           </div>
-        </div>
+        </div> : <div className="career-route-empty" role="status">尚未匹配到入职岗位的发展路线，请选择序列并搜索岗位方向。</div>}
         <div className="level-legend"><b>二级技能等级</b><span><i>L1</i>入门</span><span><i>L2</i>基础</span><span><i>L3</i>熟练</span><span><i>L4</i>精通</span><span><i>L5</i>专家</span></div>
       </section>
 
       <div className="growth-bottom-grid">
         <section className="panel gap-pool-panel">
-          <div className="section-head"><div><h3>我的 Gap 池</h3><p>三个来源统一汇总、去重并按优先级排序</p></div></div>
+          <div className="section-head"><div><h3>我的 Gap 池</h3><p>按当前岗位与下一职级的必需技能要求，对照有效技能认证实时计算</p></div></div>
           <div className="gap-source-tabs">
             {GAP_TABS.map((tab) => (
-              <button key={tab.key} className={gapFilter === tab.key ? 'active' : ''} onClick={() => setGapFilter(tab.key)}>
+              <button aria-pressed={gapFilter===tab.key} key={tab.key} className={gapFilter === tab.key ? 'active' : ''} onClick={() => setGapFilter(tab.key)}>
                 <b>{gapCounts[tab.key]}</b><span>{tab.label}</span>
               </button>
             ))}
           </div>
           <div className="gap-pool-list">
-            {gapItems.length === 0 && <p>暂无个人 Gap 记录。</p>}
+            {(gapFilter==='all'?gapItems.length:gapCounts[gapFilter])===0&&<p className="gap-pool-empty" role="status">{gapFilter==='okr'?'尚未配置 OKR 目标技能，暂无可计算的差距。':gapFilter==='all'?'暂无可计算的技能差距；请确认岗位路线、技能标准与认证已维护。':'该来源暂无技能差距。'}</p>}
             {gapItems.map((item: GapPoolItem) => (
               <article key={`${item.source}-${item.title}`} data-gap-source={item.source} className={gapFilter !== 'all' && item.source !== gapFilter ? 'is-hidden' : ''}>
                 <div className={`gap-source ${item.source}`}>{GAP_SOURCE_TEXT[item.source] ?? item.sourceLabel}</div>
                 <div className="gap-copy">
                   <h4>{item.title}</h4>
                   <p>{item.description}</p>
-                  {item.competencies.length > 0 && (
-                    <div className="gap-comps">
-                      {item.competencies.map((comp) => (
-                        <span key={`${item.title}-${comp.name}`}><em>{comp.name}</em>L{comp.level}</span>
-                      ))}
-                    </div>
-                  )}
+
                 </div>
-                <div className="five-levels">
+                <div className="five-levels" role="img" aria-label={`当前L${item.filled}，目标L${item.target}，共五级`}>
                   {[0, 1, 2, 3, 4].map((level) => {
                     const levelClass = level < item.filled ? 'filled' : level === item.target - 1 ? 'target' : '';
-                    return <i key={level} className={levelClass}></i>;
+                    return <i aria-hidden="true" key={level} className={levelClass}></i>;
                   })}
                 </div>
                 <b>{item.levelRange}</b><span className={`tag ${item.priority}`}>{item.priority.toUpperCase()}</span>
